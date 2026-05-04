@@ -105,8 +105,21 @@ def _measure_daemon_roundtrip_ms() -> float:
         if not Path(sock_path).exists():
             raise RuntimeError("daemon failed to start for bench")
         try:
+            from phantom.daemon.client import DaemonNotRunning
             client = DaemonClient(socket_path=sock_path)
-            client.call("ping")  # warm
+            # macOS races: the socket file appears as soon as bind()
+            # returns, but connect() refuses until the server has also
+            # called listen()+accept(). Linux happens to block; macOS
+            # doesn't. Retry the warm-up ping for up to 500 ms before
+            # declaring the daemon broken.
+            for _ in range(100):
+                try:
+                    client.call("ping")
+                    break
+                except DaemonNotRunning:
+                    time.sleep(0.005)
+            else:
+                raise RuntimeError("daemon failed to accept connections")
             t0 = time.perf_counter()
             client.call("ping")
             elapsed_ms = (time.perf_counter() - t0) * 1000.0

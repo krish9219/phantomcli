@@ -36,12 +36,20 @@ def running_server(socket_path: str):
     server = build_default_server(socket_path=socket_path)
     t = threading.Thread(target=server.start, daemon=True)
     t.start()
-    # wait up to 2s for socket to appear
+    # Wait up to 2 s for the daemon to be ACCEPTING — the socket file
+    # appearing isn't enough on macOS, where connect() refuses until
+    # the server has called listen()+accept(). Probe with a real ping.
+    accepting = False
     for _ in range(200):
         if Path(socket_path).exists():
-            break
+            try:
+                DaemonClient(socket_path=socket_path).call("ping")
+                accepting = True
+                break
+            except DaemonNotRunning:
+                pass
         time.sleep(0.01)
-    assert Path(socket_path).exists(), "daemon failed to bind socket"
+    assert accepting, "daemon failed to accept connections within 2 s"
     yield server
     server.stop()
     t.join(timeout=2)
