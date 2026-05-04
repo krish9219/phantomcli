@@ -5,7 +5,7 @@
 [![tests](https://img.shields.io/badge/tests-passing-brightgreen)](#tests)
 [![license](https://img.shields.io/badge/license-MIT%20core%20%2B%20Pro-blue)](LICENSE)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
-[![version](https://img.shields.io/badge/version-1.0.0-purple)](version.json)
+[![release](https://img.shields.io/github/v/release/krish9219/phantomcli?label=release&color=purple)](https://github.com/krish9219/phantomcli/releases/latest)
 
 Phantom is the AI assistant that **runs on your machine, talks to any model, edits your code safely, and reaches you wherever you are**. The MIT-licensed core gives you the entire CLI, sandbox, plugin system, and dashboard. The Pro tier adds production conveniences (multi-key API pool, hosted plugin mirror, advanced multi-agent orchestration, priority support).
 
