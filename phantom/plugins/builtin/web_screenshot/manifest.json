@@ -1,0 +1,9 @@
+{
+  "name": "web-screenshot",
+  "version": "1.0.0",
+  "description": "Headless-browser screenshot of a URL via Playwright. Returns PNG bytes (b64) + viewport metadata.",
+  "entry_point": "phantom.plugins.builtin.web_screenshot:WebScreenshotPlugin",
+  "capabilities": ["network", "filesystem"],
+  "author": "Aravind Labs",
+  "license": "MIT"
+}

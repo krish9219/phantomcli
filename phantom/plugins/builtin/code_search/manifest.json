@@ -1,0 +1,9 @@
+{
+  "name": "code-search",
+  "version": "1.0.0",
+  "description": "Search code via ripgrep inside the sandbox.",
+  "entry_point": "phantom.plugins.builtin.code_search:CodeSearchPlugin",
+  "capabilities": ["executor", "filesystem"],
+  "author": "Aravind Labs",
+  "license": "MIT"
+}

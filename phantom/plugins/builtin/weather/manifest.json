@@ -1,0 +1,10 @@
+{
+  "name": "weather",
+  "version": "1.0.0",
+  "description": "Free weather lookup via Open-Meteo (no API key required).",
+  "entry_point": "phantom.plugins.builtin.weather:WeatherPlugin",
+  "capabilities": ["network"],
+  "author": "Aravind Labs",
+  "license": "MIT",
+  "homepage": "https://open-meteo.com/"
+}

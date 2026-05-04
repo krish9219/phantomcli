@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1117">
+  <title>Phantom</title>
+  <link rel="stylesheet" href="/static/main.css">
+  <link rel="icon" href="/static/icon-192.png">
+</head>
+<body>
+  <header>
+    <h1>Phantom</h1>
+    <span id="status" class="status status-disconnected">disconnected</span>
+  </header>
+
+  <main id="conversation" aria-live="polite">
+    <div class="hint">
+      <p>Ask Phantom anything. Tool calls run in a sandbox.
+      Try <code>/help</code>, <code>/plugins</code>, or just say hi.</p>
+    </div>
+  </main>
+
+  <form id="composer" autocomplete="off">
+    <textarea
+      id="input"
+      rows="1"
+      placeholder="Type a message…"
+      aria-label="Message"
+      maxlength="8192"
+      required
+    ></textarea>
+    <button type="submit" id="send" aria-label="Send">Send</button>
+  </form>
+
+  <script src="/static/main.js"></script>
+  <!-- Mermaid: rendered client-side. Sourced from cdn.jsdelivr.net with
+       a strict integrity hash. Disable by removing this script tag. -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"
+          integrity="sha384-3OqeHK7BiXrr0Ue4UQ/n3xMhZEsh5o7QMP6eOe4DUtPC1c/u6N4HkPQjqYpOBKKr"
+          crossorigin="anonymous"
+          onload="window.__phantom_mermaid_loaded=true; if (window.mermaid) window.mermaid.initialize({startOnLoad:false, securityLevel:'strict', theme:'dark'});"
+          onerror="window.__phantom_mermaid_loaded=false;"></script>
+  <script src="/static/mermaid_render.js"></script>
+</body>
+</html>

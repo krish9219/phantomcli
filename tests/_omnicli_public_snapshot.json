@@ -1,0 +1,415 @@
+{
+  "agent_loop": [
+    "LoopResult",
+    "LoopStats",
+    "ModelTurn",
+    "ToolCall",
+    "run"
+  ],
+  "agent_scratchpad": [
+    "ScratchRow",
+    "cleanup_expired",
+    "delete",
+    "get",
+    "get_all",
+    "peek",
+    "put"
+  ],
+  "agents": [
+    "AgentOrchestrator",
+    "AgentResult",
+    "AgentTask"
+  ],
+  "anthropic_stream": [
+    "AnthropicParseResult",
+    "SseFrame",
+    "iter_sse_frames",
+    "parse_bytes",
+    "parse_stream"
+  ],
+  "audit_log": [
+    "AuditRecord",
+    "clear",
+    "record",
+    "tail",
+    "verify_chain"
+  ],
+  "auth": [
+    "CONFIG_DIR",
+    "KEY_FILE",
+    "TOKEN_FILE",
+    "add_pool_key",
+    "get_api_key",
+    "get_api_key_pool",
+    "save_api_key"
+  ],
+  "browser": [
+    "fetch_page_content",
+    "run_browser",
+    "set_quiet"
+  ],
+  "cli": [
+    "INSTALL_DIR",
+    "SKIP_DIRS",
+    "SKIP_EXTS",
+    "UPDATE_ZIP",
+    "VERSION_URL",
+    "chat",
+    "dashboard",
+    "default",
+    "send_telegram",
+    "setup",
+    "telegram_cmd",
+    "telegram_standalone",
+    "test_connection",
+    "update"
+  ],
+  "commands": [
+    "CommandResult",
+    "NOT_A_COMMAND",
+    "available_commands",
+    "handle"
+  ],
+  "context_compact": [
+    "CompactionStats",
+    "DEFAULT_BUDGET_TOKENS",
+    "DEFAULT_COMPACT_RATIO",
+    "DEFAULT_KEEP_RECENT",
+    "MIN_MESSAGES_FOR_COMPACT",
+    "compact",
+    "count_tokens",
+    "estimate_messages",
+    "needs_compaction"
+  ],
+  "context_memory": [
+    "DEFAULT_MAX_CHARS",
+    "LoadedFile",
+    "MAX_PER_FILE",
+    "MergedContext",
+    "discover",
+    "inject_into_messages",
+    "load"
+  ],
+  "context_memory_watcher": [
+    "Watcher",
+    "start"
+  ],
+  "cost_tracker": [
+    "PriceEntry",
+    "SessionSummary",
+    "compute_usd",
+    "history",
+    "price_for",
+    "record",
+    "register_price",
+    "reset_session",
+    "session_summary",
+    "set_daily_alert_threshold",
+    "total_session",
+    "total_today"
+  ],
+  "dashboard": [
+    "LICENSE_EXEMPT",
+    "LicenseGate",
+    "api_csrf_token",
+    "api_license_activate",
+    "api_license_revoke",
+    "api_license_status",
+    "api_stats",
+    "get_chat_history",
+    "get_stats",
+    "serve_activate",
+    "serve_dashboard",
+    "serve_phantomcli_buy",
+    "websocket_endpoint"
+  ],
+  "engine": [
+    "MAX_ROUNDS",
+    "generate_response",
+    "get_dynamic_persona"
+  ],
+  "executor": [
+    "SAFE_PREFIXES",
+    "SENSITIVE_PATTERNS",
+    "check_trust_gate",
+    "effective_trust",
+    "execute_bash",
+    "god_mode_active",
+    "mark_god_mode_activated"
+  ],
+  "free_port": [
+    "pick_free_port",
+    "port_is_free"
+  ],
+  "hooks": [
+    "HookResult",
+    "apply_prompt_rewrite",
+    "dispatch",
+    "is_configured"
+  ],
+  "licensing": [
+    "CONFIG_DIR",
+    "DEACTIVATION_URL",
+    "DEVICES_URL",
+    "KEY_PATTERN",
+    "LICENSE_FILE",
+    "MAX_DEVICES",
+    "VALIDATION_URL",
+    "deactivate_device",
+    "deactivate_this_device",
+    "get_device_id",
+    "get_device_name",
+    "get_license_info",
+    "get_platform",
+    "is_licensed",
+    "list_devices",
+    "revoke_local_license",
+    "validate_key_online"
+  ],
+  "llm_summarizer": [
+    "clear_cache",
+    "make_callable",
+    "summarise"
+  ],
+  "logging_setup": [
+    "DEFAULT_DIR",
+    "DEFAULT_FILE",
+    "configure_logging"
+  ],
+  "media": [
+    "generate_image",
+    "generate_tts"
+  ],
+  "memory": [
+    "DB_PATH",
+    "clear_history",
+    "get_config",
+    "get_owner_profile",
+    "get_recent_history",
+    "get_system_info",
+    "init_db",
+    "is_first_run",
+    "prune_episodic",
+    "save_config",
+    "save_message",
+    "save_owner_profile",
+    "save_rag_memory",
+    "save_system_info",
+    "search_rag_memory"
+  ],
+  "model_router": [
+    "ModelChoice",
+    "classify",
+    "route",
+    "router_enabled",
+    "set_tiers"
+  ],
+  "openai_stream": [
+    "OpenAIParseResult",
+    "parse_bytes",
+    "parse_stream"
+  ],
+  "permissions": [
+    "PermissionResult",
+    "Permissions",
+    "load"
+  ],
+  "project_memory": [
+    "ProjectSummary",
+    "SUMMARY_FILENAME",
+    "append_run",
+    "find_related_projects",
+    "format_related_prompt",
+    "write_summary"
+  ],
+  "prompt_builder": [
+    "build",
+    "detect_provider"
+  ],
+  "prompt_cache": [
+    "DEFAULT_MIN_BLOCK_TOKENS",
+    "DEFAULT_MIN_SYSTEM_TOKENS",
+    "annotate_long_blocks",
+    "annotate_system",
+    "cached_block_count",
+    "strip_cache_controls"
+  ],
+  "prompt_guard": [
+    "ScanResult",
+    "is_high_risk",
+    "sanitize_user",
+    "scan",
+    "wrap_tool_output"
+  ],
+  "python_hooks": [
+    "ALLOW",
+    "BLOCK",
+    "HookDecision",
+    "NotificationPayload",
+    "PAYLOADS",
+    "PostToolUsePayload",
+    "PreToolUsePayload",
+    "REWRITE",
+    "Registration",
+    "StopPayload",
+    "UserPromptSubmitPayload",
+    "clear_registry",
+    "dispatch",
+    "hook",
+    "load_from_disk",
+    "registrations"
+  ],
+  "research_phase": [
+    "ResearchResult",
+    "detect_domain",
+    "run_research"
+  ],
+  "sessions": [
+    "delete_session",
+    "export_session",
+    "list_sessions",
+    "load_session",
+    "save_session"
+  ],
+  "settings": [
+    "CATEGORIES",
+    "SETTINGS",
+    "get",
+    "get_category",
+    "get_status_summary",
+    "set"
+  ],
+  "settings_layers": [
+    "PROJECT_LOCAL",
+    "PROJECT_SHARED",
+    "ResolvedSettings",
+    "SYSTEM",
+    "USER",
+    "get",
+    "get_source",
+    "is_locked",
+    "load"
+  ],
+  "slash_commands": [
+    "Registry",
+    "SLASH_RE",
+    "SlashCommand",
+    "SlashResult",
+    "dispatch",
+    "parse",
+    "reload_registry"
+  ],
+  "stream_assembler": [
+    "StreamAssembler",
+    "ToolCallPartial"
+  ],
+  "subagents": [
+    "Registry",
+    "SubagentType",
+    "get",
+    "list_types",
+    "load_user_agents",
+    "reload_registry"
+  ],
+  "sysinfo": [
+    "detect_system",
+    "format_system_card",
+    "live_ram"
+  ],
+  "tasks": [
+    "Task",
+    "TaskTracker",
+    "status_icon"
+  ],
+  "telegram_bot": [
+    "BRANDING",
+    "is_running",
+    "notify",
+    "start",
+    "stop"
+  ],
+  "telemetry": [
+    "clear_metrics",
+    "init",
+    "is_enabled",
+    "memory_exporter",
+    "metrics_snapshot",
+    "record_hook",
+    "record_metric",
+    "record_model_call",
+    "record_tool_call",
+    "shutdown",
+    "span"
+  ],
+  "text_tool_parser": [
+    "parse_text_tool_calls",
+    "strip_tool_calls"
+  ],
+  "tool_dispatch": [
+    "dispatch"
+  ],
+  "tool_output_filter": [
+    "DEFAULT_MAX_OUTPUT_CHARS",
+    "FilterResult",
+    "filter_output"
+  ],
+  "tool_schemas": [
+    "validate"
+  ],
+  "tui": [
+    "AMB",
+    "BANNER_FULL",
+    "BLU",
+    "CY",
+    "DIM",
+    "FIRST_RUN_FLAG",
+    "GOD_MODE_FLAG",
+    "GRN",
+    "RED",
+    "TERMS_FLAG",
+    "TERMS_SUMMARY",
+    "WHT",
+    "agent_live_panel",
+    "agent_spawn_intro",
+    "agent_spawn_panel",
+    "ai_response_end",
+    "ai_response_header",
+    "boot_screen",
+    "chat_prompt",
+    "cinematic_welcome",
+    "command_help",
+    "danger_blocked",
+    "erase_lines",
+    "error",
+    "expand_pastes",
+    "glitch_transition",
+    "god_mode_activation_sequence",
+    "hud_scanline",
+    "info",
+    "matrix_rain",
+    "separator",
+    "show_terms_and_accept",
+    "status_panel",
+    "success",
+    "summarize_large_paste",
+    "type_out",
+    "warn"
+  ],
+  "visuals": [
+    "PhantomSpinner",
+    "render_terminal_chart",
+    "with_spinner"
+  ],
+  "voice": [
+    "is_voice_enabled",
+    "listen",
+    "speak",
+    "strip_for_speech",
+    "toggle_voice"
+  ],
+  "worktree": [
+    "Worktree",
+    "create",
+    "is_git_repo"
+  ]
+}

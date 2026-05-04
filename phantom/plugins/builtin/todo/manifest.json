@@ -1,0 +1,9 @@
+{
+  "name": "todo",
+  "version": "1.0.0",
+  "description": "Per-session todo list backed by SQLite.",
+  "entry_point": "phantom.plugins.builtin.todo:TodoPlugin",
+  "capabilities": ["memory"],
+  "author": "Aravind Labs",
+  "license": "MIT"
+}

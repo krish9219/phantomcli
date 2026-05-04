@@ -1,0 +1,68 @@
+# Phantom plugin mirror — Caddy configuration.
+#
+# Caddy auto-provisions Let's Encrypt TLS for the configured hostname.
+#
+# Install:
+#     sudo apt install caddy
+#     sudo cp deploy/mirror/Caddyfile /etc/caddy/Caddyfile
+#     sudo systemctl reload caddy
+#
+# Audit headers:
+#     curl -sI https://phantom.aravindlabs.tech/plugins/healthz | grep -E "(strict|content-security|x-)"
+
+phantom.aravindlabs.tech {
+    encode gzip
+
+    # Reverse proxy for the mirror itself.
+    handle_path /plugins/* {
+        reverse_proxy 127.0.0.1:8801 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    # Static landing page (optional — point root at your built site).
+    root * /var/www/phantom
+    file_server {
+        precompressed gzip
+    }
+
+    # Security headers.
+    header {
+        # Send HSTS for one year, including subdomains.
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        # Mirror responses are JSON / tarballs — no inline JS allowed.
+        Content-Security-Policy "default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self'"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        Permissions-Policy "geolocation=(), microphone=(), camera=(), browsing-topics=()"
+        # Drop the Server header.
+        -Server
+    }
+
+    # Rate-limit POST/PUT against DoS. Operators may publish bundles
+    # during dev — use a dedicated upload endpoint behind auth.
+    @writes method POST PUT DELETE
+    handle @writes {
+        respond "method not allowed on the public mirror" 405
+    }
+
+    # Long-lived cache for immutable bundle URLs (sha256 verifies).
+    @bundles path /plugins/plugins/*/*.tar.gz
+    header @bundles Cache-Control "public, max-age=2592000, immutable"
+
+    # Index.json must NOT cache long — bundle list changes.
+    @index path /plugins/index.json
+    header @index Cache-Control "public, max-age=60, must-revalidate"
+
+    log {
+        output file /var/log/caddy/phantom-mirror.log {
+            roll_size 100MiB
+            roll_keep 14
+            roll_keep_for 90d
+        }
+        format json
+        level INFO
+    }
+}

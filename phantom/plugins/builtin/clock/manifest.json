@@ -1,0 +1,9 @@
+{
+  "name": "clock",
+  "version": "1.0.0",
+  "description": "Return the current wall-clock time as ISO-8601 UTC.",
+  "entry_point": "phantom.plugins.builtin.clock:ClockPlugin",
+  "capabilities": [],
+  "author": "Aravind Labs",
+  "license": "MIT"
+}

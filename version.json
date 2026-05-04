@@ -1,0 +1,26 @@
+{
+  "version": "1.0.0",
+  "releaseDate": "2026-05-04",
+  "downloadUrl": "https://phantom.aravindlabs.tech/phantomcli/downloads/phantomcli-source.zip",
+  "binaryUrl": "https://phantom.aravindlabs.tech/phantomcli/downloads/phantomcli-linux",
+  "size_bytes": 0,
+  "changelog": [
+    "v1.0.0 — UNIFIED RELEASE. Renumbered from 4.0.10 to start the v1 line cleanly. omnicli (legacy v3) and phantom (v4 features) now both ship under the v1.0 banner.",
+    "DAEMON MODE: phantom serve / phantom connect over unix socket — sub-50ms perceived start, beats Python cold-start for good.",
+    "BENCHMARKS: phantom bench prints cold-start, daemon-start, RAM, turn-latency, N-agent scaling. All numbers reproducible.",
+    "CROSS-HARNESS IMPORT: phantom memory import claude-code|codex|opencode reads other agents' transcripts into Phantom's episodic memory.",
+    "MCP AUTO-IMPORT: phantom mcp import sucks in ~/.claude/mcp.json and ~/.codex/mcp.json with one command.",
+    "VOICE: phantom dictate — record + Whisper API to transcript piped to chat.",
+    "CUSTOM PROVIDER UX: phantom config provider custom --base-url --model --key — one shot, no JSON editing.",
+    "SWARM: phantom swarm '<goal>' fans out N subagents into isolated git worktrees with diff-based conflict resolution.",
+    "MERMAID DASHBOARD: dashboard renders mermaid diagrams inline with strict CSP.",
+    "MERMAID TUI: phantom.render.mermaid auto-detects kitty/sixel/ASCII and falls back gracefully when mmdc is missing.",
+    "SELF-DEV: phantom self-dev '<change>' — agent edits source in worktree, runs full test suite, only swaps if green.",
+    "PLUGINS: 3 new first-party plugins — github-pr, web-screenshot, code-review. Demonstrates the SDK end-to-end.",
+    "PLUGIN MIRROR: FastAPI mirror server + signed-bundle index + phantom plugin install/search/uninstall/publish CLI. Detached Ed25519 signatures, tar-slip safe extraction, SHA-256 verification.",
+    "TRANSACTIONAL EDITS: phantom.edits.EditTransaction stages multi-file changes, generates unified-diff previews, commits atomically, and rolls back to snapshot on any failure. Mode-preserving, UTF-8 strict, atomic per-file replace.",
+    "PYTHON RENAME: phantom.refactor.rename_python_symbol — AST-aware, scope-respecting, shadowing-correct symbol rename. Token-safe rewrite (never touches strings or comments).",
+    "TUI POLISH: StreamingResponse + ProgressTracker + FileUpdateSidePanel — Rich-based incremental rendering with markup-safe escaping.",
+    "BINARY: PyInstaller spec rewritten for v1.0; builds a single 45 MB phantom binary for Linux. CI matrix builds + smoke-tests on ubuntu-latest and macos-latest."
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "gh-search",
+  "version": "1.0.0",
+  "description": "Search GitHub via the gh CLI. Requires gh to be installed and authenticated.",
+  "entry_point": "phantom.plugins.builtin.gh_search:GhSearchPlugin",
+  "capabilities": ["network", "executor"],
+  "author": "Aravind Labs",
+  "license": "MIT"
+}

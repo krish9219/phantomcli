@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phantom — God Mode AI OS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💀</text></svg>" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #0a0a0f;
+      --surface:      #0d0d15;
+      --border:       rgba(255,255,255,.07);
+      --border-hi:    rgba(255,255,255,.12);
+      --cyan:         #00f2fe;
+      --cyan-dim:     rgba(0,242,254,.08);
+      --cyan-glow:    rgba(0,242,254,.15);
+      --violet:       #7c3aed;
+      --violet-dim:   rgba(124,58,237,.08);
+      --emerald:      #43e97b;
+      --emerald-dim:  rgba(67,233,123,.08);
+      --bright:       #4facfe;
+      --red:          #f87171;
+      --text:         #e2e8f0;
+      --muted:        #8493a8;
+      --subtle:       #4a5568;
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Ambient background ── */
+    .orb {
+      position: fixed; border-radius: 50%;
+      filter: blur(130px); opacity: 0.2;
+      animation: float 20s infinite ease-in-out alternate;
+      pointer-events: none; z-index: 0;
+    }
+    .orb-1 { width: 600px; height: 600px; background: var(--cyan);   top: -200px; left: -150px; }
+    .orb-2 { width: 700px; height: 700px; background: var(--violet); bottom: -250px; right: -200px; animation-delay: -8s; }
+    @keyframes float { 0% { transform: translateY(0) scale(1); } 100% { transform: translateY(40px) scale(1.06); } }
+
+    .grid-bg {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+      background-size: 60px 60px;
+    }
+
+    /* ── Shell layout ── */
+    .shell {
+      position: relative; z-index: 10;
+      display: flex; height: 100vh; overflow: hidden;
+    }
+
+    /* ─────────── SIDEBAR ─────────── */
+    .sidebar {
+      width: 245px; flex-shrink: 0;
+      display: flex; flex-direction: column;
+      background: rgba(5,5,12,.9);
+      border-right: 1px solid var(--border);
+      backdrop-filter: blur(24px);
+    }
+
+    .sb-brand {
+      padding: 20px 18px 16px;
+      display: flex; align-items: center; gap: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sb-logo {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--cyan), var(--violet));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; box-shadow: 0 0 20px var(--cyan-glow);
+    }
+    .ghost-rider{position:relative;display:inline-block;color:#fff;text-shadow:0 0 10px #ff9800,0 -8px 15px #ff5722,0 -15px 25px #ff0000;animation:skullBreathe 1.5s infinite alternate ease-in-out}
+    @keyframes skullBreathe{0%{text-shadow:0 0 8px #ff9800,0 -8px 15px #ff5722,0 -15px 25px #ff0000}100%{text-shadow:0 0 16px #ffeb3b,0 -15px 25px #ff9800,0 -25px 40px #ff0000}}
+    .ghost-rider::after{content:'';position:absolute;top:50%;left:50%;width:4px;height:4px;background:transparent;box-shadow:-10px 10px 5px 2px #ff9800,10px 5px 4px 1px #ff5722,-5px -10px 6px 3px #f44336,5px -15px 5px 2px #ff9800;border-radius:50%;mix-blend-mode:screen;filter:blur(1px);pointer-events:none;animation:fireWind 1.2s infinite linear;z-index:3}
+    @keyframes fireWind{0%{transform:translate(-50%,-50%) scale(1);opacity:.9}100%{transform:translate(-50%,-50%) translate(-20px,-30px) scale(0);opacity:0}}
+    .sb-name {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800; font-size: 17px;
+      background: linear-gradient(90deg, var(--cyan), var(--bright));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .sb-tag {
+      font-size: 9px; color: var(--subtle);
+      letter-spacing: 1.5px; text-transform: uppercase;
+      margin-top: 1px;
+    }
+
+    .sb-nav {
+      flex: 1; padding: 12px 10px;
+      display: flex; flex-direction: column; gap: 3px;
+      overflow-y: auto;
+    }
+
+    .sb-label {
+      font-size: 9px; font-weight: 600;
+      letter-spacing: 1px; text-transform: uppercase;
+      color: var(--subtle); padding: 8px 12px 4px;
+    }
+
+    .sb-btn {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; padding: 10px 14px;
+      border: none; background: transparent;
+      color: var(--muted); font-family: 'Inter', sans-serif;
+      font-size: 13px; font-weight: 500;
+      border-radius: 9px; cursor: pointer;
+      transition: all .15s; text-align: left;
+    }
+    .sb-btn:hover { background: rgba(255,255,255,.04); color: var(--text); }
+    .sb-btn.on {
+      background: var(--cyan-dim);
+      color: var(--cyan);
+      border: 1px solid rgba(0,242,254,.15);
+    }
+    .sb-btn i { width: 18px; text-align: center; font-size: 13px; opacity: .7; }
+    .sb-btn.on i { opacity: 1; }
+
+    .sb-divider { height: 1px; background: var(--border); margin: 8px 0; }
+
+    .trust-wrap { padding: 0 10px 10px; }
+    .trust-label {
+      font-size: 9px; font-weight: 600;
+      letter-spacing: 1px; text-transform: uppercase;
+      color: var(--subtle); padding: 8px 4px 6px; display: block;
+    }
+    .trust-sel {
+      width: 100%; padding: 9px 12px;
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--border);
+      border-radius: 9px; color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 12px; outline: none; cursor: pointer;
+      transition: border .2s;
+    }
+    .trust-sel:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px var(--cyan-dim); }
+    .trust-sel option { background: #0d0d15; }
+
+    .quick-wrap { padding: 0 10px 10px; }
+    .quick-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 5px 11px; margin: 3px;
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--border);
+      border-radius: 20px; color: var(--muted);
+      font-family: 'Inter', sans-serif; font-size: 11px;
+      cursor: pointer; transition: all .2s;
+    }
+    .quick-btn:hover {
+      border-color: rgba(0,242,254,.3);
+      color: var(--cyan); background: var(--cyan-dim);
+    }
+
+    .sb-foot {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .live-dot {
+      width: 7px; height: 7px;
+      background: var(--emerald); border-radius: 50%;
+      box-shadow: 0 0 6px var(--emerald);
+      animation: pulse 2s infinite; flex-shrink: 0;
+    }
+    .live-dot.dead { background: var(--red); box-shadow: 0 0 6px var(--red); animation: none; }
+    @keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:.4; transform:scale(.7); } }
+    .conn-text { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); flex: 1; }
+
+    /* ─────────── MAIN ─────────── */
+    .main {
+      flex: 1; display: flex; flex-direction: column;
+      overflow: hidden; min-width: 0;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      height: 52px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 28px;
+      background: rgba(5,5,12,.7);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+    }
+    .topbar-left { display: flex; align-items: center; gap: 12px; }
+    .topbar-title {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 700; font-size: 15px;
+    }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 12px; border-radius: 20px;
+      font-size: 11px; font-weight: 600;
+      letter-spacing: .06em; text-transform: uppercase;
+    }
+    .badge-cyan { background: var(--cyan-dim); border: 1px solid rgba(0,242,254,.2); color: var(--cyan); }
+    .badge-violet { background: var(--violet-dim); border: 1px solid rgba(124,58,237,.2); color: #a78bfa; }
+    .badge-emerald { background: var(--emerald-dim); border: 1px solid rgba(67,233,123,.2); color: var(--emerald); }
+
+    /* ── Panes ── */
+    .pane { display: none; flex: 1; overflow: hidden; }
+    .pane.on { display: flex; flex-direction: column; }
+
+    /* ─────────── CHAT PANE ─────────── */
+    #pane-chat { flex-direction: column; }
+
+    .messages {
+      flex: 1; overflow-y: auto;
+      padding: 28px 32px 12px;
+      display: flex; flex-direction: column; gap: 20px;
+    }
+
+    .welcome {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 60px 20px; text-align: center;
+      flex: 1;
+    }
+    .welcome-icon {
+      width: 72px; height: 72px; border-radius: 20px;
+      background: linear-gradient(135deg, var(--cyan), var(--violet));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 32px; margin-bottom: 20px;
+      box-shadow: 0 0 40px var(--cyan-glow);
+    }
+    .welcome h2 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.6rem; font-weight: 800; margin-bottom: 8px;
+      background: linear-gradient(135deg, var(--cyan), var(--bright), var(--violet));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .welcome p { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+    .welcome-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 520px; }
+    .welcome-chip {
+      padding: 8px 16px;
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--border);
+      border-radius: 20px; color: var(--muted);
+      font-size: 12px; cursor: pointer; transition: all .2s;
+    }
+    .welcome-chip:hover { border-color: rgba(0,242,254,.3); color: var(--cyan); background: var(--cyan-dim); }
+
+    /* Messages */
+    .msg-row { display: flex; animation: msgIn .25s ease; }
+    .msg-row.user { justify-content: flex-end; }
+    @keyframes msgIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+
+    .bubble-user {
+      max-width: 68%; padding: 12px 18px;
+      background: linear-gradient(135deg, var(--cyan), var(--bright));
+      border-radius: 18px 18px 4px 18px;
+      color: #050505; font-size: 14px; line-height: 1.6;
+      font-weight: 500;
+      box-shadow: 0 4px 20px var(--cyan-glow);
+    }
+
+    .msg-ai-wrap { display: flex; gap: 12px; max-width: 80%; }
+    .ai-avatar {
+      width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+      background: linear-gradient(135deg, var(--cyan), var(--violet));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; box-shadow: 0 0 16px var(--cyan-glow);
+    }
+    .ai-inner { flex: 1; min-width: 0; }
+    .ai-tag {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 1px; text-transform: uppercase;
+      color: var(--cyan); margin-bottom: 6px;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .bubble-ai {
+      padding: 16px 18px;
+      background: rgba(255,255,255,.02);
+      border: 1px solid var(--border);
+      border-radius: 4px 18px 18px 18px;
+      font-size: 14px; line-height: 1.75;
+    }
+    .bubble-ai h1,.bubble-ai h2,.bubble-ai h3 { color: var(--text); font-weight: 700; margin: 12px 0 6px; }
+    .bubble-ai h1 { font-size: 17px; } .bubble-ai h2 { font-size: 15px; } .bubble-ai h3 { font-size: 14px; }
+    .bubble-ai p { margin-bottom: 8px; }
+    .bubble-ai ul,.bubble-ai ol { padding-left: 20px; margin-bottom: 8px; }
+    .bubble-ai li { margin-bottom: 4px; }
+    .bubble-ai code { background: rgba(0,242,254,.06); padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--cyan); }
+    .bubble-ai pre { background: rgba(0,0,0,.4); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin: 10px 0; overflow-x: auto; }
+    .bubble-ai pre code { background: none; padding: 0; color: var(--text); font-size: 12px; }
+    .bubble-ai strong { color: var(--text); font-weight: 600; }
+    .bubble-ai a { color: var(--cyan); text-decoration: underline; }
+    .bubble-ai table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+    .bubble-ai th { background: rgba(0,242,254,.05); padding: 8px 12px; border: 1px solid var(--border); text-align: left; color: var(--cyan); font-size: 11px; text-transform: uppercase; letter-spacing: .5px; }
+    .bubble-ai td { padding: 8px 12px; border: 1px solid var(--border); }
+    .bubble-ai blockquote { border-left: 3px solid var(--cyan); padding-left: 12px; color: var(--muted); margin: 8px 0; font-style: italic; }
+
+    /* Thinking dots */
+    .thinking-dots { display: flex; gap: 5px; align-items: center; padding: 4px 0; }
+    .thinking-dots span {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--cyan); opacity: .4;
+      animation: bounce 1.4s infinite;
+    }
+    .thinking-dots span:nth-child(2) { animation-delay: .2s; }
+    .thinking-dots span:nth-child(3) { animation-delay: .4s; }
+    @keyframes bounce { 0%,60%,100% { transform:translateY(0); } 30% { transform:translateY(-6px); } }
+
+    /* Input area */
+    .input-area {
+      flex-shrink: 0; padding: 12px 32px 20px;
+      background: rgba(5,5,12,.8);
+      border-top: 1px solid var(--border);
+      backdrop-filter: blur(12px);
+    }
+    .input-hint {
+      font-size: 11px; color: var(--subtle);
+      margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+    }
+    .input-hint #statusLabel { color: var(--cyan); font-weight: 600; }
+    .input-box {
+      display: flex; align-items: flex-end; gap: 10px;
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--border);
+      border-radius: 14px; padding: 10px 14px;
+      transition: border .2s, box-shadow .2s;
+    }
+    .input-box:focus-within {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 3px var(--cyan-dim);
+    }
+    #userInput {
+      flex: 1; background: transparent; border: none; outline: none;
+      color: var(--text); font-family: 'Inter', sans-serif;
+      font-size: 14px; resize: none; max-height: 140px; min-height: 22px;
+      line-height: 1.6;
+    }
+    #userInput::placeholder { color: var(--subtle); }
+    .send-btn {
+      width: 36px; height: 36px; flex-shrink: 0; border: none; border-radius: 10px;
+      background: linear-gradient(135deg, var(--cyan), var(--bright));
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: all .2s;
+    }
+    .send-btn:hover { transform: scale(1.06); box-shadow: 0 4px 14px var(--cyan-glow); }
+    .send-btn:disabled { opacity: .3; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* ─────────── STATS PANE ─────────── */
+    #pane-stats { overflow-y: auto; }
+    .stats-scroll { padding: 32px 36px 60px; }
+    .pane-title {
+      font-family: 'Outfit', sans-serif; font-size: 1.6rem; font-weight: 800;
+      margin-bottom: 6px;
+    }
+    .pane-sub { color: var(--muted); font-size: 13px; margin-bottom: 32px; }
+
+    .stat-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 16px; margin-bottom: 36px;
+    }
+    @media (max-width: 900px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+    .stat-card {
+      padding: 22px;
+      background: rgba(255,255,255,.015);
+      border: 1px solid var(--border);
+      border-top-color: var(--border-hi);
+      border-left-color: var(--border-hi);
+      border-radius: 14px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .stat-icon {
+      width: 42px; height: 42px; border-radius: 11px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .si-cyan { background: var(--cyan-dim); color: var(--cyan); border: 1px solid rgba(0,242,254,.15); }
+    .si-violet { background: var(--violet-dim); color: #a78bfa; border: 1px solid rgba(124,58,237,.15); }
+    .si-emerald { background: var(--emerald-dim); color: var(--emerald); border: 1px solid rgba(67,233,123,.15); }
+    .si-bright { background: rgba(79,172,254,.08); color: var(--bright); border: 1px solid rgba(79,172,254,.15); }
+    .stat-val { font-family: 'Outfit', sans-serif; font-size: 2rem; font-weight: 800; line-height: 1; }
+    .stat-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; }
+
+    .section-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+    @media (max-width: 900px) { .section-grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: rgba(255,255,255,.015);
+      border: 1px solid var(--border);
+      border-top-color: var(--border-hi);
+      border-radius: 14px;
+    }
+    .card-head {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 20px 24px 0;
+      margin-bottom: 16px;
+    }
+    .card-head h3 { font-family: 'Outfit', sans-serif; font-size: 1rem; font-weight: 700; }
+    .card-body { padding: 0 24px 20px; }
+
+    .model-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 0; border-bottom: 1px solid var(--border);
+    }
+    .model-row:last-child { border-bottom: none; }
+    .model-name { font-size: 12px; color: var(--muted); }
+    .model-chip {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; padding: 4px 12px;
+      border-radius: 20px; max-width: 200px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .chip-cyan { background: var(--cyan-dim); border: 1px solid rgba(0,242,254,.2); color: var(--cyan); }
+    .chip-violet { background: var(--violet-dim); border: 1px solid rgba(124,58,237,.2); color: #a78bfa; }
+
+    .ratio-bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,.06); overflow: hidden; margin-top: 8px; }
+    .ratio-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--cyan), var(--bright)); transition: width .6s ease; }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(0,242,254,.2); }
+  </style>
+</head>
+<body>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="grid-bg"></div>
+
+  <!-- Update banner — hidden until version check fires -->
+  <div id="update-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,rgba(0,242,254,.12),rgba(124,58,237,.12));border-bottom:1px solid rgba(0,242,254,.25);padding:10px 24px;display:none;align-items:center;justify-content:space-between;gap:12px;backdrop-filter:blur(12px);">
+    <div style="display:flex;align-items:center;gap:10px;font-size:13px;">
+      <span style="font-size:16px;">⬆️</span>
+      <span><strong style="color:#00f2fe;" id="update-version-text">New version available</strong> <span style="color:#8493a8;" id="update-changelog-text"></span></span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+      <code style="font-family:'JetBrains Mono',monospace;font-size:11px;background:rgba(0,0,0,.3);padding:4px 10px;border-radius:6px;color:#00f2fe;" id="update-cmd">python run.py update</code>
+      <button onclick="document.getElementById('update-banner').style.display='none'" style="background:none;border:none;color:#4a5568;cursor:pointer;font-size:16px;padding:0 4px;">✕</button>
+    </div>
+  </div>
+
+  <div class="shell" id="shell-wrap" style="margin-top:0;">
+
+    <!-- ── SIDEBAR ── -->
+    <aside class="sidebar">
+      <div class="sb-brand">
+        <div class="sb-logo"><span class="ghost-rider">💀</span></div>
+        <div>
+          <div class="sb-name">Phantom</div>
+          <div class="sb-tag">God Mode AI OS · <span id="current-ver">__APP_VERSION__</span></div>
+        </div>
+      </div>
+
+      <nav class="sb-nav">
+        <div class="sb-label">Navigation</div>
+        <button class="sb-btn on" id="nav-chat" onclick="showPane('chat')">
+          <i class="fa-solid fa-comment-dots"></i> Chat
+        </button>
+        <button class="sb-btn" id="nav-stats" onclick="showPane('stats')">
+          <i class="fa-solid fa-chart-bar"></i> Stats &amp; Memory
+        </button>
+
+        <div class="sb-divider"></div>
+        <div class="sb-label">Trust Level</div>
+        <div class="trust-wrap">
+          <select class="trust-sel" id="trustLevel">
+            <option value="1">⚠️ Level 1 — Paranoid</option>
+            <option value="2">🔒 Level 2 — Standard</option>
+            <option value="3" selected>🛠 Level 3 — Developer</option>
+            <option value="4">💀 Level 4 — God Mode</option>
+          </select>
+        </div>
+
+        <div class="sb-label">Quick Prompts</div>
+        <div class="quick-wrap">
+          <button class="quick-btn" onclick="sendQuick('What OS am I running?')">🖥 Check OS</button>
+          <button class="quick-btn" onclick="sendQuick('List files in current directory')">📁 List Files</button>
+          <button class="quick-btn" onclick="sendQuick('Show memory and CPU usage')">📊 System Stats</button>
+          <button class="quick-btn" onclick="sendQuick('What is my public IP?')">🌐 Public IP</button>
+          <button class="quick-btn" onclick="sendQuick('Show disk usage')">💾 Disk Usage</button>
+          <button class="quick-btn" onclick="sendQuick('Write a python hello world script and run it')">🐍 Run Python</button>
+        </div>
+      </nav>
+
+      <div class="sb-foot">
+        <div class="live-dot" id="liveDoc"></div>
+        <div class="conn-text" id="connText">Connecting…</div>
+        <button onclick="clearChat()" style="background:none;border:1px solid rgba(248,113,113,.2);color:var(--red);padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s;" onmouseover="this.style.background='rgba(248,113,113,.08)'" onmouseout="this.style.background='none'">Clear</button>
+      </div>
+    </aside>
+
+    <!-- ── MAIN ── -->
+    <div class="main">
+
+      <!-- Top bar -->
+      <div class="topbar">
+        <div class="topbar-left">
+          <span class="topbar-title" id="topTitle">Chat</span>
+          <span class="badge badge-cyan" id="topBadge"><span class="live-dot" id="topDot" style="width:6px;height:6px;"></span> Live</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="badge badge-violet"><i class="fa-solid fa-microchip" style="font-size:10px;"></i> <span id="topModel" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">__MAIN_MODEL__</span></span>
+        </div>
+      </div>
+
+      <!-- ── CHAT PANE ── -->
+      <div class="pane on" id="pane-chat">
+        <div class="messages" id="messages">
+          <div class="welcome" id="welcomeScreen">
+            <div class="welcome-icon">💀</div>
+            <h2>Phantom God Mode</h2>
+            <p>Dual-engine AI with infinite personas, bash execution &amp; web browsing</p>
+            <div class="welcome-chips">
+              <button class="welcome-chip" onclick="sendQuick('What OS am I running?')">🖥 Check OS</button>
+              <button class="welcome-chip" onclick="sendQuick('Show disk usage')">💾 Disk Usage</button>
+              <button class="welcome-chip" onclick="sendQuick('Read https://news.ycombinator.com and summarize top 3 posts')">🌐 Browse Web</button>
+              <button class="welcome-chip" onclick="sendQuick('Write a python hello world script and run it')">🐍 Run Python</button>
+              <button class="welcome-chip" onclick="sendQuick('Show memory and CPU usage')">📊 System Stats</button>
+              <button class="welcome-chip" onclick="sendQuick('What is my public IP address?')">🔍 Public IP</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="input-area">
+          <div class="input-hint">
+            <span id="statusLabel">Ready</span>
+            <span>· Enter to send · Shift+Enter for new line</span>
+          </div>
+
+          <!-- Attachment preview bar -->
+          <div id="attachBar" style="display:none;align-items:center;gap:8px;margin-bottom:8px;padding:8px 12px;background:rgba(0,242,254,.06);border:1px solid rgba(0,242,254,.2);border-radius:10px;">
+            <i class="fa-solid fa-file-lines" style="color:var(--cyan);font-size:13px;"></i>
+            <span id="attachName" style="font-size:12px;color:var(--cyan);font-family:'JetBrains Mono',monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+            <span id="attachSize" style="font-size:11px;color:var(--muted);"></span>
+            <button onclick="clearAttachment()" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:2px 6px;border-radius:4px;font-size:12px;" title="Remove attachment">✕</button>
+          </div>
+
+          <div class="input-box">
+            <!-- Hidden file input -->
+            <input type="file" id="fileInput" style="display:none;"
+              accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.sh,.yaml,.yml,.toml,.xml,.pdf,.log,.env,.ini,.conf,.sql"
+              onchange="handleFileSelect(this)">
+
+            <!-- Attachment button -->
+            <button id="attachBtn" onclick="document.getElementById('fileInput').click()" title="Attach document"
+              style="background:none;border:none;color:var(--muted);cursor:pointer;padding:4px 6px;border-radius:8px;transition:all .2s;flex-shrink:0;"
+              onmouseover="this.style.color='var(--cyan)';this.style.background='var(--cyan-dim)'"
+              onmouseout="this.style.color='var(--muted)';this.style.background='none'">
+              <i class="fa-solid fa-paperclip" style="font-size:15px;"></i>
+            </button>
+
+            <textarea id="userInput" rows="1" placeholder="Ask Phantom anything — attach a file or just type…"></textarea>
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#050505" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── STATS PANE ── -->
+      <div class="pane" id="pane-stats">
+        <div class="stats-scroll">
+          <div class="pane-title">Stats &amp; Memory</div>
+          <div class="pane-sub">Real-time metrics from your Phantom instance</div>
+
+          <div class="stat-grid">
+            <div class="stat-card">
+              <div class="stat-icon si-cyan"><i class="fa-solid fa-database"></i></div>
+              <div class="stat-val" id="s-total">__TOTAL__</div>
+              <div class="stat-lbl">Total Logs</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon si-violet"><i class="fa-solid fa-user"></i></div>
+              <div class="stat-val" id="s-user">__USER_MSGS__</div>
+              <div class="stat-lbl">Your Messages</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon si-emerald"><i class="fa-solid fa-robot"></i></div>
+              <div class="stat-val" id="s-ai">__AI_MSGS__</div>
+              <div class="stat-lbl">AI Responses</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon si-bright"><i class="fa-solid fa-bolt"></i></div>
+              <div class="stat-val" id="s-ratio">—</div>
+              <div class="stat-lbl">Response Ratio</div>
+            </div>
+          </div>
+
+          <div class="section-grid">
+            <div class="card">
+              <div class="card-head"><h3>AI Engines</h3></div>
+              <div class="card-body">
+                <div class="model-row">
+                  <span class="model-name">Main Engine</span>
+                  <span class="model-chip chip-cyan" id="m-main">__MAIN_MODEL__</span>
+                </div>
+                <div class="model-row">
+                  <span class="model-name">Router Engine</span>
+                  <span class="model-chip chip-violet" id="m-router">__ROUTER_MODEL__</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head"><h3>Message Ratio</h3></div>
+              <div class="card-body">
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                  <span style="font-size:12px;color:var(--cyan);">You</span>
+                  <span style="font-size:12px;color:var(--muted);" id="ratio-pct">—</span>
+                  <span style="font-size:12px;color:var(--emerald);">Phantom</span>
+                </div>
+                <div class="ratio-bar">
+                  <div class="ratio-fill" id="ratio-fill" style="width:50%"></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:10px;">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--cyan);" id="ratio-user">0</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--emerald);" id="ratio-ai">0</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <h3>Memory Snapshot</h3>
+              <span class="badge badge-cyan" style="font-size:10px;" id="histCount">0 entries</span>
+            </div>
+            <div class="card-body">
+              <div id="memoryList" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main -->
+  </div><!-- /shell -->
+
+<script>
+  /* ── Data injected by server ── */
+  const STATS   = __STATS_JSON__;
+  const HISTORY = __HISTORY_JSON__;
+
+  marked.setOptions({ breaks: true, gfm: true });
+
+  /* ── WebSocket ── */
+  let ws = null;
+  let isThinking = false;
+
+  async function connectWS() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    let csrf = '';
+    try {
+      const r = await fetch('/api/csrf-token', { credentials: 'same-origin' });
+      const j = await r.json();
+      csrf = j.csrf_token || '';
+    } catch (e) {
+      console.warn('csrf fetch failed', e);
+    }
+    ws = new WebSocket(proto + '//' + location.host + '/ws?csrf_token=' + encodeURIComponent(csrf));
+
+    ws.onopen = () => setConn(true);
+    ws.onclose = () => { setConn(false); setTimeout(connectWS, 3000); };
+    ws.onerror = () => setConn(false);
+
+    ws.onmessage = (ev) => {
+      const d = JSON.parse(ev.data);
+      if (d.type === 'thinking') {
+        removeThinking();
+        appendThinking();
+        setStatus('Thinking…');
+      } else if (d.type === 'task_update') {
+        renderTasks(d.tasks || []);
+        setStatus('Working…');
+      } else if (d.type === 'chunk') {
+        appendChunk(d.content || '');
+        setStatus('Streaming…');
+      } else if (d.type === 'done') {
+        finalizeStream(d.message || '');
+        removeThinking();
+        isThinking = false;
+        document.getElementById('sendBtn').disabled = false;
+        setStatus('Ready');
+        refreshStats();
+      } else if (d.type === 'response') {
+        removeThinking();
+        isThinking = false;
+        document.getElementById('sendBtn').disabled = false;
+        setStatus('Ready');
+        appendAI(d.message);
+        refreshStats();
+      } else if (d.type === 'error') {
+        removeThinking();
+        isThinking = false;
+        document.getElementById('sendBtn').disabled = false;
+        setStatus('Error');
+        appendAI('⚠️ **Error:** ' + d.message);
+      }
+    };
+  }
+
+  /* ── Streaming chunk accumulator ── */
+  let _streamBubble = null;
+  let _streamText = '';
+
+  function appendChunk(text) {
+    if (!_streamBubble) {
+      removeThinking();
+      hideWelcome();
+      const box = document.getElementById('messages');
+      const div = document.createElement('div');
+      div.className = 'msg-row'; div.id = 'streamRow';
+      div.innerHTML = `
+        <div class="msg-ai-wrap">
+          <div class="ai-avatar">💀</div>
+          <div class="ai-inner">
+            <div class="ai-tag"><span class="live-dot" style="width:5px;height:5px;background:var(--cyan);box-shadow:none;"></span>Phantom</div>
+            <div class="bubble-ai" id="streamBubble"></div>
+          </div>
+        </div>`;
+      box.appendChild(div);
+      _streamBubble = document.getElementById('streamBubble');
+      _streamText = '';
+    }
+    _streamText += text;
+    _streamBubble.innerHTML = marked.parse(_streamText);
+    const box = document.getElementById('messages');
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function finalizeStream(finalText) {
+    if (_streamBubble && finalText) {
+      _streamBubble.innerHTML = marked.parse(finalText);
+      _streamBubble.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+    } else if (!_streamBubble && finalText) {
+      appendAI(finalText);
+    }
+    _streamBubble = null;
+    _streamText = '';
+  }
+
+  /* ── Task checklist rendering ── */
+  function renderTasks(tasks) {
+    let panel = document.getElementById('taskPanel');
+    if (!panel) {
+      removeThinking();
+      const box = document.getElementById('messages');
+      const div = document.createElement('div');
+      div.className = 'msg-row'; div.id = 'taskPanelRow';
+      div.innerHTML = `
+        <div class="msg-ai-wrap">
+          <div class="ai-avatar">⏱</div>
+          <div class="ai-inner">
+            <div class="ai-tag">Progress</div>
+            <div class="bubble-ai" id="taskPanel" style="font-family:var(--font-mono,monospace);font-size:13px;"></div>
+          </div>
+        </div>`;
+      box.appendChild(div);
+      panel = document.getElementById('taskPanel');
+    }
+    const iconFor = s => ({pending:'◻',running:'◼',done:'✔',failed:'✖'}[s] || '?');
+    const colorFor = s => ({pending:'#888',running:'#e0b000',done:'#10b981',failed:'#ef4444'}[s] || '#888');
+    panel.innerHTML = tasks.map(t => {
+      const dur = (t.duration != null && (t.status === 'done' || t.status === 'failed'))
+        ? ` <span style="opacity:.6">(${t.duration.toFixed(1)}s)</span>` : '';
+      const detail = t.detail ? ` <span style="opacity:.6">— ${esc(t.detail.slice(0,80))}</span>` : '';
+      const name = (t.status === 'running') ? `<b>${esc(t.name)}</b>` : esc(t.name);
+      return `<div style="color:${colorFor(t.status)};line-height:1.7">${iconFor(t.status)} ${name}${dur}${detail}</div>`;
+    }).join('');
+    const box = document.getElementById('messages');
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function setConn(on) {
+    const dot = document.getElementById('liveDoc');
+    const topDot = document.getElementById('topDot');
+    const txt = document.getElementById('connText');
+    if (on) {
+      dot.classList.remove('dead');
+      topDot.style.background = 'var(--emerald)';
+      txt.textContent = 'Connected';
+      txt.style.color = 'var(--emerald)';
+    } else {
+      dot.classList.add('dead');
+      topDot.style.background = 'var(--red)';
+      txt.textContent = 'Reconnecting…';
+      txt.style.color = 'var(--red)';
+    }
+  }
+
+  function setStatus(t) {
+    document.getElementById('statusLabel').textContent = t;
+  }
+
+  /* ── Pane switching ── */
+  function showPane(name) {
+    ['chat','stats'].forEach(p => {
+      document.getElementById('pane-' + p).classList.toggle('on', p === name);
+      document.getElementById('nav-' + p).classList.toggle('on', p === name);
+    });
+    const titles = { chat: 'Chat', stats: 'Stats & Memory' };
+    document.getElementById('topTitle').textContent = titles[name] || name;
+    if (name === 'stats') renderStats();
+  }
+
+  /* ── Stats rendering ── */
+  function renderStats() {
+    fetch('/api/stats').then(r => r.json()).then(s => {
+      document.getElementById('s-total').textContent = s.interactions;
+      document.getElementById('s-user').textContent  = s.user_msgs;
+      document.getElementById('s-ai').textContent    = s.ai_msgs;
+      document.getElementById('m-main').textContent   = s.model;
+      document.getElementById('m-router').textContent = s.router;
+      document.getElementById('topModel').textContent = s.model;
+
+      const total = s.user_msgs + s.ai_msgs;
+      const pct = total > 0 ? Math.round(s.user_msgs / total * 100) : 50;
+      document.getElementById('s-ratio').textContent = (total > 0 ? (s.ai_msgs / Math.max(s.user_msgs,1)).toFixed(1) + 'x' : '—');
+      document.getElementById('ratio-fill').style.width = pct + '%';
+      document.getElementById('ratio-pct').textContent = pct + '%';
+      document.getElementById('ratio-user').textContent = s.user_msgs;
+      document.getElementById('ratio-ai').textContent   = s.ai_msgs;
+    }).catch(() => {});
+  }
+
+  function refreshStats() {
+    fetch('/api/stats').then(r => r.json()).then(s => {
+      document.getElementById('topModel').textContent = s.model;
+    }).catch(() => {});
+  }
+
+  /* ── Chat helpers ── */
+  function hideWelcome() {
+    const w = document.getElementById('welcomeScreen');
+    if (w) w.remove();
+  }
+
+  function appendUser(text) {
+    hideWelcome();
+    const box = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'msg-row user';
+    div.innerHTML = `<div class="bubble-user">${esc(text)}</div>`;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function appendAI(text) {
+    hideWelcome();
+    const box = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'msg-row';
+    div.innerHTML = `
+      <div class="msg-ai-wrap">
+        <div class="ai-avatar">💀</div>
+        <div class="ai-inner">
+          <div class="ai-tag"><span class="live-dot" style="width:5px;height:5px;background:var(--cyan);box-shadow:none;"></span>Phantom</div>
+          <div class="bubble-ai">${marked.parse(text)}</div>
+        </div>
+      </div>`;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+    div.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+  }
+
+  function appendThinking() {
+    const box = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'msg-row'; div.id = 'thinkingMsg';
+    div.innerHTML = `
+      <div class="msg-ai-wrap">
+        <div class="ai-avatar">💀</div>
+        <div class="ai-inner">
+          <div class="ai-tag">Phantom</div>
+          <div class="bubble-ai"><div class="thinking-dots"><span></span><span></span><span></span></div></div>
+        </div>
+      </div>`;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function removeThinking() {
+    const t = document.getElementById('thinkingMsg');
+    if (t) t.remove();
+  }
+
+  function esc(t) {
+    return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ── Attachment handling ── */
+  let attachedFile = null;
+
+  function handleFileSelect(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    // 10MB limit
+    if (file.size > 10 * 1024 * 1024) {
+      alert('File too large. Maximum size is 10MB.');
+      input.value = '';
+      return;
+    }
+
+    attachedFile = file;
+    document.getElementById('attachName').textContent = file.name;
+    document.getElementById('attachSize').textContent = formatBytes(file.size);
+    document.getElementById('attachBar').style.display = 'flex';
+
+    // Auto-focus input after attach
+    document.getElementById('userInput').focus();
+    const placeholder = document.getElementById('userInput');
+    placeholder.placeholder = `Attached: ${file.name} — ask Phantom anything about it…`;
+  }
+
+  function clearAttachment() {
+    attachedFile = null;
+    document.getElementById('fileInput').value = '';
+    document.getElementById('attachBar').style.display = 'none';
+    document.getElementById('userInput').placeholder = 'Ask Phantom anything — attach a file or just type…';
+  }
+
+  function formatBytes(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+    return (b / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = e => resolve(e.target.result);
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
+    });
+  }
+
+  /* ── Send ── */
+  async function sendMessage() {
+    const input = document.getElementById('userInput');
+    const text = input.value.trim();
+    if ((!text && !attachedFile) || isThinking) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) { setStatus('Not connected'); return; }
+
+    const trust = document.getElementById('trustLevel').value;
+    let fullMessage = text;
+
+    // If a file is attached, read it and prepend to the message
+    if (attachedFile) {
+      try {
+        setStatus('Reading file…');
+        const content = await readFileAsText(attachedFile);
+        const header = `[Attached file: ${attachedFile.name}]\n\`\`\`\n${content}\n\`\`\`\n\n`;
+        fullMessage = header + (text || `Analyse the attached file "${attachedFile.name}" and give me a detailed summary.`);
+
+        // Show user bubble with file tag + message
+        const displayText = (text || `Analyse "${attachedFile.name}"`) ;
+        appendUserWithAttachment(displayText, attachedFile.name);
+      } catch (e) {
+        setStatus('Failed to read file');
+        return;
+      }
+      clearAttachment();
+    } else {
+      appendUser(text);
+    }
+
+    input.value = ''; input.style.height = 'auto';
+    isThinking = true;
+    document.getElementById('sendBtn').disabled = true;
+    setStatus('Routing to expert…');
+
+    // Demote any prior task panel so this turn gets a fresh one.
+    const prevPanel = document.getElementById('taskPanel');
+    if (prevPanel) prevPanel.id = '';
+    const prevRow = document.getElementById('taskPanelRow');
+    if (prevRow) prevRow.id = '';
+
+    ws.send(JSON.stringify({ type: 'chat', message: fullMessage, trust }));
+  }
+
+  function appendUserWithAttachment(text, filename) {
+    hideWelcome();
+    const box = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'msg-row user';
+    div.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:68%;">
+        <div style="display:flex;align-items:center;gap:6px;padding:5px 12px;background:rgba(0,242,254,.1);border:1px solid rgba(0,242,254,.25);border-radius:20px;">
+          <i class="fa-solid fa-paperclip" style="color:var(--cyan);font-size:11px;"></i>
+          <span style="font-size:11px;color:var(--cyan);font-family:'JetBrains Mono',monospace;">${esc(filename)}</span>
+        </div>
+        <div class="bubble-user">${esc(text)}</div>
+      </div>`;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function sendQuick(text) {
+    showPane('chat');
+    document.getElementById('userInput').value = text;
+    sendMessage();
+  }
+
+  function clearChat() {
+    if (!confirm('Clear chat UI? Memory in the database is not deleted.')) return;
+    const box = document.getElementById('messages');
+    box.innerHTML = `<div class="welcome" id="welcomeScreen">
+      <div class="welcome-icon">💀</div>
+      <h2>Phantom God Mode</h2>
+      <p>Chat cleared. Start a new conversation.</p>
+    </div>`;
+  }
+
+  /* ── Keyboard ── */
+  document.getElementById('userInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  document.getElementById('userInput').addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 140) + 'px';
+  });
+
+  /* ── Memory list on stats page ── */
+  function buildMemoryList() {
+    const list = document.getElementById('memoryList');
+    document.getElementById('histCount').textContent = HISTORY.length + ' entries';
+    if (!HISTORY.length) {
+      list.innerHTML = '<div style="text-align:center;padding:32px;color:var(--subtle);font-size:13px;">No memory logs yet</div>';
+      return;
+    }
+    const recent = HISTORY.slice(-20).reverse();
+    list.innerHTML = recent.map(m => `
+      <div style="padding:10px 14px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:10px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+          <span class="badge ${m.role==='user'?'badge-cyan':'badge-emerald'}" style="font-size:9px;padding:2px 8px;">${m.role}</span>
+          <span style="font-size:10px;color:var(--subtle);font-family:'JetBrains Mono',monospace;">${m.timestamp ? m.timestamp.slice(0,16) : ''}</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.5;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${esc(m.content)}</div>
+      </div>`).join('');
+  }
+
+  /* ── Init ── */
+  window.addEventListener('load', () => {
+    connectWS();
+    buildMemoryList();
+
+    // Render stats counts from injected data
+    document.getElementById('s-total').textContent  = STATS.interactions;
+    document.getElementById('s-user').textContent   = STATS.user_msgs;
+    document.getElementById('s-ai').textContent     = STATS.ai_msgs;
+    document.getElementById('topModel').textContent = STATS.model;
+
+    // Load history into chat
+    if (HISTORY && HISTORY.length > 0) {
+      const box = document.getElementById('messages');
+      const welcome = document.getElementById('welcomeScreen');
+      if (welcome) welcome.remove();
+      HISTORY.forEach(m => {
+        if (m.role === 'user') appendUser(m.content);
+        else if (m.role === 'assistant') appendAI(m.content);
+      });
+    }
+  });
+  /* ── Version check ── */
+  (async function checkVersion() {
+    try {
+      const r = await fetch('https://phantom.aravindlabs.tech/api/phantomcli/version')
+      const data = await r.json()
+      const latest = data.version
+      const current = document.getElementById('current-ver')?.textContent?.trim()
+      if (!latest || !current || current === '__APP_VERSION__') return
+      // Simple semver compare
+      const toNum = v => v.split('.').map(Number).reduce((a,n,i) => a + n * Math.pow(1000, 2-i), 0)
+      if (toNum(latest) > toNum(current)) {
+        const banner = document.getElementById('update-banner')
+        const vtext  = document.getElementById('update-version-text')
+        const ctext  = document.getElementById('update-changelog-text')
+        if (vtext) vtext.textContent = `Update available: v${latest}`
+        if (ctext && data.changelog?.length) ctext.textContent = '— ' + data.changelog[0]
+        if (banner) { banner.style.display = 'flex'; document.getElementById('shell-wrap').style.marginTop = '44px' }
+      }
+    } catch { /* network offline — fail silently */ }
+  })()
+</script>
+</body>
+</html>

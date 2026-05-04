@@ -1,0 +1,57 @@
+# Phantom plugin mirror — systemd unit file.
+#
+# Install:
+#     sudo cp deploy/mirror/phantom-mirror.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now phantom-mirror
+#
+# View logs:
+#     journalctl -u phantom-mirror -f
+#
+# This unit assumes:
+#   * phantom-cli installed system-wide (or via venv at /opt/phantom-mirror/venv)
+#   * /srv/phantom-mirror/ exists and is writable by the `phantom-mirror` user
+#   * Caddy fronts http://127.0.0.1:8801 with TLS
+
+[Unit]
+Description=Phantom plugin mirror
+Documentation=https://phantom.aravindlabs.tech/plugins
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=phantom-mirror
+Group=phantom-mirror
+WorkingDirectory=/srv/phantom-mirror
+Environment=PHANTOM_MIRROR_DATA=/srv/phantom-mirror
+Environment=PHANTOM_MIRROR_HOST=127.0.0.1
+Environment=PHANTOM_MIRROR_PORT=8801
+Environment=PYTHONUNBUFFERED=1
+
+# Use the system phantom binary if present, else fall back to a venv.
+ExecStart=/usr/bin/env python3 -m phantom.plugins.mirror.serve_cli
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+
+# Hardening — the mirror only needs to read /srv/phantom-mirror.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/phantom-mirror
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+[Install]
+WantedBy=multi-user.target

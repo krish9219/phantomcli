@@ -1,0 +1,9 @@
+{
+  "name": "github-pr",
+  "version": "1.0.0",
+  "description": "Inspect GitHub pull requests via the gh CLI — list, view, comment thread, file changes.",
+  "entry_point": "phantom.plugins.builtin.github_pr:GithubPRPlugin",
+  "capabilities": ["network", "executor"],
+  "author": "Aravind Labs",
+  "license": "MIT"
+}

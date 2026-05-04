@@ -1,0 +1,71 @@
+site_name: Phantom
+site_description: Production-grade local AI agent — sandbox, plugins, channels, MCP, voice, PWA.
+site_url: https://docs.phantom.aravindlabs.tech/
+repo_name: krish9219/phantomcli
+repo_url: https://github.com/krish9219/phantomcli
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+    - content.code.annotate
+    - search.highlight
+  palette:
+    - scheme: slate
+      primary: black
+      accent: blue
+      toggle: { icon: material/weather-sunny, name: Switch to light }
+    - scheme: default
+      primary: black
+      accent: blue
+      toggle: { icon: material/weather-night, name: Switch to dark }
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_root_heading: true
+            show_source: false
+            members_order: source
+
+nav:
+  - Home: index.md
+  - Vision: ../VISION.md
+  - Architecture: ../ARCHITECTURE.md
+  - Architecture Decisions:
+      - Index: ../docs/adr/README.md
+      - 0001 — Open-core licensing: ../docs/adr/0001-open-core-licensing.md
+      - 0002 — Backwards-compat cohabitation: ../docs/adr/0002-backwards-compat-cohabitation.md
+      - 0003 — Tiered sandbox: ../docs/adr/0003-tiered-sandbox.md
+      - 0004 — PWA instead of native: ../docs/adr/0004-pwa-instead-of-native.md
+      - 0005 — Single hosting plane: ../docs/adr/0005-single-hosting-plane.md
+      - 0006 — Stage gates: ../docs/adr/0006-stage-gates-and-peer-review.md
+  - Stages:
+      - Index: ../docs/stages/README.md
+      - Stage 0 — Foundation: ../docs/stages/STAGE_0.md
+      - Stage 1 — Sandbox: ../docs/stages/STAGE_1.md
+      - Stage 2 — Plugin SDK: ../docs/stages/STAGE_2.md
+      - Stage 3 — Channels: ../docs/stages/STAGE_3.md
+      - Stage 4 — MCP / ACP: ../docs/stages/STAGE_4.md
+      - Stage 5 — Skills + Memory: ../docs/stages/STAGE_5.md
+      - Stage 6 — Voice + Canvas + PWA: ../docs/stages/STAGE_6.md
+      - Stage 7 — i18n + Onboarding + Docs: ../docs/stages/STAGE_7.md
+      - Stage 8 — Hardening: ../docs/stages/STAGE_8.md
+  - Operator guides:
+      - Sandbox: ../docs/security/sandbox.md
+      - Security policy: ../SECURITY.md
+  - Changelog: ../CHANGELOG.md

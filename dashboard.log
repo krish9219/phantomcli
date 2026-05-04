@@ -1,0 +1,102 @@
+nohup: ignoring input
+
+
+  ┌─────────────────────────────────────────────────────────────────┐
+  │             PHANTOM CLI  ·  LICENSE AGREEMENT                   │
+  │                    Aravind Labs                                 │
+  ├─────────────────────────────────────────────────────────────────┤
+  │  1. LICENSE  — Single user, max 3 devices. Non-transferable.    │
+  │  2. USE      — Personal/commercial use permitted on licensed    │
+  │               devices. No redistribution of the software.      │
+  │  3. REVERSE  — Decompiling, reverse engineering, or extracting │
+  │               source code is strictly prohibited.              │
+  │  4. COMMANDS — You are solely responsible for all commands     │
+  │               executed through PhantomCLI on your system.     │
+  │  5. LIABILITY — Aravind Labs bears NO responsibility for data  │
+  │               loss, system WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+WARNING:  Invalid HTTP request received.
+                                                         │
+│ ╰─────────────╯                                                              │
+│                                                                              │
+│ /projects/omnicli_project/omnicli/cli.py:492 in _launch_dashboard            │
+│                                                                              │
+│   489 │   init_db()                                                          │
+│   490 │                                                                      │
+│   491 │   from omnicli.tui import show_terms_and_accept                      │
+│ ❱ 492 │   if not show_terms_and_accept():                                    │
+│   493 │   │   raise SystemExit(0)                                            │
+│   494 │                                                                      │
+│   495 │   if not get_api_key() or not get_config("router_api_key"):          │
+│                                                                              │
+│ ╭───────────────────────────────── locals ─────────────────────────────────╮ │
+│ │           is_licensed = <function is_licensed at 0x7fe00738ab60>         │ │
+│ │                  port = 4062                                             │ │
+│ │ show_terms_and_accept = <function show_terms_and_accept at               │ │
+│ │                         0x7fe007ed5b20>                                  │ │
+│ │               uvicorn = <module 'uvicorn' from                           │ │
+│ │                         '/projects/omnicli_project/venv/lib/python3.13/… │ │
+│ ╰──────────────────────────────────────────────────────────────────────────╯ │
+│                                                                              │
+│ /projects/omnicli_project/omnicli/tui.py:244 in show_terms_and_accept        │
+│                                                                              │
+│   241 │   console.print(f"  [{AMB}]agreement at phantom.aravindlabs.tech/ter │
+│   242 │                                                                      │
+│   243 │   try:                                                               │
+│ ❱ 244 │   │   answer = input("\033[96m  Do you accept? (YES / no): \033[0m") │
+│   245 │   except (EOFError, KeyboardInterrupt):                              │
+│   246 │   │   return False                                                   │
+│   247                                                                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+OSError: [Errno 9] Bad file descriptor

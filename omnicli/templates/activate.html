@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhantomCLI — License Required</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💀</text></svg>" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --bg:#0a0a0f; --cyan:#00f2fe; --violet:#7c3aed; --text:#e2e8f0; --muted:#8493a8; --border:rgba(255,255,255,.07); }
+    body { background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; overflow:hidden; }
+
+    .orb { position:fixed; border-radius:50%; filter:blur(130px); opacity:.2; pointer-events:none; z-index:0; }
+    .orb-1 { width:500px; height:500px; background:var(--cyan); top:-150px; left:-100px; animation:float 18s infinite ease-in-out alternate; }
+    .orb-2 { width:600px; height:600px; background:var(--violet); bottom:-200px; right:-150px; animation:float 18s infinite ease-in-out alternate; animation-delay:-7s; }
+    @keyframes float { 0%{transform:translateY(0) scale(1)} 100%{transform:translateY(30px) scale(1.06)} }
+    .grid { position:fixed; inset:0; pointer-events:none; z-index:0; background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px); background-size:60px 60px; }
+
+    .card {
+      position:relative; z-index:10;
+      background:rgba(255,255,255,.02);
+      border:1px solid var(--border); border-top-color:rgba(255,255,255,.1); border-left-color:rgba(255,255,255,.1);
+      border-radius:24px; padding:48px 44px;
+      width:100%; max-width:440px; text-align:center;
+      box-shadow:0 30px 80px -20px rgba(0,0,0,.6), 0 0 60px -20px rgba(0,242,254,.08);
+      backdrop-filter:blur(20px);
+    }
+    .logo { width:64px; height:64px; border-radius:18px; background:linear-gradient(135deg,var(--cyan),var(--violet)); display:flex; align-items:center; justify-content:center; font-size:30px; margin:0 auto 20px; box-shadow:0 0 30px rgba(0,242,254,.2); }
+    .ghost-rider{position:relative;display:inline-block;color:#fff;text-shadow:0 0 10px #ff9800,0 -8px 15px #ff5722,0 -15px 25px #ff0000;animation:skullBreathe 1.5s infinite alternate ease-in-out}
+    @keyframes skullBreathe{0%{text-shadow:0 0 8px #ff9800,0 -8px 15px #ff5722,0 -15px 25px #ff0000}100%{text-shadow:0 0 16px #ffeb3b,0 -15px 25px #ff9800,0 -25px 40px #ff0000}}
+    .ghost-rider::after{content:'';position:absolute;top:50%;left:50%;width:4px;height:4px;background:transparent;box-shadow:-10px 10px 5px 2px #ff9800,10px 5px 4px 1px #ff5722,-5px -10px 6px 3px #f44336,5px -15px 5px 2px #ff9800;border-radius:50%;mix-blend-mode:screen;filter:blur(1px);pointer-events:none;animation:fireWind 1.2s infinite linear;z-index:3}
+    @keyframes fireWind{0%{transform:translate(-50%,-50%) scale(1);opacity:.9}100%{transform:translate(-50%,-50%) translate(-20px,-30px) scale(0);opacity:0}}
+    h1 { font-family:'Outfit',sans-serif; font-size:1.6rem; font-weight:800; margin-bottom:6px; }
+    .sub { color:var(--muted); font-size:14px; margin-bottom:32px; line-height:1.6; }
+    .tab-bar { display:flex; background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:12px; padding:4px; margin-bottom:24px; gap:4px; }
+    .tab { flex:1; padding:9px; border:none; border-radius:9px; background:transparent; color:var(--muted); font-family:'Inter',sans-serif; font-size:13px; font-weight:500; cursor:pointer; transition:all .2s; }
+    .tab.on { background:linear-gradient(135deg,var(--cyan),#4facfe); color:#050505; font-weight:700; }
+    .field { text-align:left; margin-bottom:14px; }
+    .field label { display:block; font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+    .field input { width:100%; padding:12px 14px; background:rgba(255,255,255,.04); border:1px solid var(--border); border-radius:10px; color:var(--text); font-family:'Inter',sans-serif; font-size:14px; outline:none; transition:border .2s,box-shadow .2s; }
+    .field input:focus { border-color:var(--cyan); box-shadow:0 0 0 3px rgba(0,242,254,.08); }
+    .field input::placeholder { color:#4a5568; }
+    .mono input { font-family:'JetBrains Mono',monospace; font-size:13px; }
+    .btn { width:100%; padding:13px; border:none; border-radius:11px; background:linear-gradient(135deg,var(--cyan),#4facfe); color:#050505; font-family:'Outfit',sans-serif; font-size:14px; font-weight:700; cursor:pointer; transition:all .2s; display:flex; align-items:center; justify-content:center; gap:8px; }
+    .btn:hover { transform:translateY(-1px); box-shadow:0 8px 24px rgba(0,242,254,.25); }
+    .btn:disabled { opacity:.35; cursor:not-allowed; transform:none; box-shadow:none; }
+    .msg { margin-top:14px; padding:10px 14px; border-radius:9px; font-size:13px; text-align:left; display:none; }
+    .msg.ok { background:rgba(67,233,123,.08); border:1px solid rgba(67,233,123,.2); color:#43e97b; display:block; }
+    .msg.err { background:rgba(248,113,113,.08); border:1px solid rgba(248,113,113,.2); color:#f87171; display:block; }
+    .buy-link { display:block; margin-top:20px; font-size:12px; color:var(--muted); }
+    .buy-link a { color:var(--cyan); text-decoration:none; }
+    .buy-link a:hover { text-decoration:underline; }
+    .panel { display:none; } .panel.on { display:block; }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.3} }
+  </style>
+</head>
+<body>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="grid"></div>
+
+  <div class="card">
+    <div class="logo"><span class="ghost-rider">💀</span></div>
+    <h1>PhantomCLI</h1>
+    <p class="sub">A license key is required to access the dashboard.<br>Already purchased? Enter your key below.</p>
+
+    <div class="tab-bar">
+      <button class="tab on" onclick="switchTab('activate')">Enter Key</button>
+      <button class="tab" onclick="switchTab('buy')">Buy License</button>
+    </div>
+
+    <!-- Activate panel -->
+    <div class="panel on" id="panel-activate">
+      <div class="field mono">
+        <label>License Key</label>
+        <input type="text" id="keyInput" placeholder="PHC-XXXXXXXX-XXXXXXXX-XXXXXXXX" autocomplete="off" />
+      </div>
+      <button class="btn" id="activateBtn" onclick="activateLicense()">
+        <i class="fa-solid fa-unlock"></i> Activate License
+      </button>
+      <div id="activateMsg" class="msg"></div>
+      <div class="buy-link">Don't have a key? <a href="https://phantom.aravindlabs.tech/phantomcli" target="_blank">Buy PhantomCLI for ₹999 →</a></div>
+    </div>
+
+    <!-- Buy panel -->
+    <div class="panel" id="panel-buy">
+      <div style="padding:12px;background:rgba(0,242,254,.04);border:1px solid rgba(0,242,254,.12);border-radius:12px;margin-bottom:16px;text-align:left;">
+        <div style="font-family:'Outfit',sans-serif;font-weight:700;font-size:.95rem;margin-bottom:8px;">What you get:</div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);">
+          <span><i class="fa-solid fa-check" style="color:#43e97b;width:16px;"></i> Dual-engine AI (Main + Router)</span>
+          <span><i class="fa-solid fa-check" style="color:#43e97b;width:16px;"></i> Bash execution on your server</span>
+          <span><i class="fa-solid fa-check" style="color:#43e97b;width:16px;"></i> Web browsing & live search</span>
+          <span><i class="fa-solid fa-check" style="color:#43e97b;width:16px;"></i> 3-layer persistent memory</span>
+          <span><i class="fa-solid fa-check" style="color:#43e97b;width:16px;"></i> Beautiful web dashboard</span>
+          <span><i class="fa-solid fa-check" style="color:#43e97b;width:16px;"></i> Lifetime access · No subscriptions</span>
+        </div>
+      </div>
+      <div style="font-family:'Outfit',sans-serif;font-size:2rem;font-weight:800;color:var(--text);margin-bottom:4px;">₹999</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:16px;">One-time · Lifetime license</div>
+      <a href="https://phantom.aravindlabs.tech/phantomcli" target="_blank" class="btn" style="text-decoration:none;">
+        <i class="fa-solid fa-bolt"></i> Buy Now on Phantom Store
+      </a>
+      <div class="buy-link" style="margin-top:12px;">After purchase, switch to "Enter Key" tab.</div>
+    </div>
+  </div>
+
+  <script>
+    function switchTab(t) {
+      document.querySelectorAll('.tab').forEach((b,i) => b.classList.toggle('on', (i===0&&t==='activate')||(i===1&&t==='buy')));
+      document.getElementById('panel-activate').classList.toggle('on', t==='activate');
+      document.getElementById('panel-buy').classList.toggle('on', t==='buy');
+    }
+
+    function showMsg(id, text, type) {
+      const el = document.getElementById(id);
+      el.textContent = text; el.className = 'msg ' + type;
+    }
+
+    async function _fetchCsrfToken() {
+      const r = await fetch('/api/csrf-token', {headers: {'Accept': 'application/json'}});
+      if (!r.ok) throw new Error('csrf-fetch-failed');
+      const data = await r.json();
+      if (!data.csrf_token) throw new Error('csrf-missing');
+      return data.csrf_token;
+    }
+
+    async function activateLicense() {
+      const key = document.getElementById('keyInput').value.trim().toUpperCase();
+      if (!/^PHC-[A-F0-9]{8}-[A-F0-9]{8}-[A-F0-9]{8}$/.test(key)) {
+        showMsg('activateMsg', 'Invalid format. Expected: PHC-XXXXXXXX-XXXXXXXX-XXXXXXXX', 'err'); return;
+      }
+      const btn = document.getElementById('activateBtn');
+      btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Validating…';
+
+      const resetBtn = () => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-unlock"></i> Activate License';
+      };
+
+      let csrf;
+      try {
+        csrf = await _fetchCsrfToken();
+      } catch {
+        showMsg('activateMsg', 'Could not initialise a secure session. Refresh and try again.', 'err');
+        resetBtn();
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/license/activate', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ key, csrf_token: csrf })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showMsg('activateMsg', '✓ License activated! Redirecting…', 'ok');
+          setTimeout(() => location.href = '/', 1500);
+        } else {
+          showMsg('activateMsg', data.error || 'Activation failed', 'err');
+          resetBtn();
+        }
+      } catch {
+        showMsg('activateMsg', 'Connection error. Try again.', 'err');
+        resetBtn();
+      }
+    }
+
+    document.getElementById('keyInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') activateLicense();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "code-review",
+  "version": "1.0.0",
+  "description": "Static lints of a code diff: unsafe eval, hardcoded secrets, large blob, missing tests, raw SQL.",
+  "entry_point": "phantom.plugins.builtin.code_review:CodeReviewPlugin",
+  "capabilities": [],
+  "author": "Aravind Labs",
+  "license": "MIT"
+}
