@@ -145,7 +145,9 @@ def import_mcp_configs(
             added.append(name)
 
     if not dry_run and added:
-        target_path.write_text(json.dumps(existing, indent=2, sort_keys=True))
+        target_path.write_text(
+            json.dumps(existing, indent=2, sort_keys=True), encoding="utf-8"
+        )
         try:
             os.chmod(target_path, 0o600)
         except OSError:

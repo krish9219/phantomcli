@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 
 import httpx
@@ -63,6 +64,10 @@ class TestTokenStore:
         store = TokenStore(base=tmp_path / "auth")
         assert store.load("anthropic") is None
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="POSIX file modes are not enforceable on Windows; os.chmod is a no-op for permission bits.",
+    )
     def test_file_mode_0600(self, tmp_path):
         import stat
         store = TokenStore(base=tmp_path / "auth")

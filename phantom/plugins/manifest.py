@@ -189,7 +189,7 @@ class PluginManifest:
         """Load and validate a manifest from a JSON file path."""
         p = Path(path)
         try:
-            data = json.loads(p.read_text())
+            data = json.loads(p.read_text(encoding="utf-8"))
         except FileNotFoundError as exc:
             raise PluginError(f"manifest not found: {p}") from exc
         except json.JSONDecodeError as exc:

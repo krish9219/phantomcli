@@ -86,7 +86,7 @@ class Config:
             return cls._with_env_overrides(cls())
 
         try:
-            data: Any = json.loads(target.read_text())
+            data: Any = json.loads(target.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             raise ConfigError(f"{target} is not valid JSON: {exc}") from exc
 

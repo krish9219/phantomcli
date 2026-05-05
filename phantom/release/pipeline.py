@@ -81,7 +81,7 @@ def audit_repo(repo_root: str | Path) -> list[str]:
         if not m:
             continue
         n = int(m.group(1))
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         is_closed = "Status:  CLOSED" in text or "Status: CLOSED" in text
         if is_closed:
             closed.append(n)
@@ -96,7 +96,7 @@ def audit_repo(repo_root: str | Path) -> list[str]:
     if not changelog.exists():
         issues.append("CHANGELOG.md missing")
     else:
-        ctext = changelog.read_text()
+        ctext = changelog.read_text(encoding="utf-8")
         if __version__ not in ctext and "[Unreleased]" not in ctext:
             issues.append(
                 f"CHANGELOG.md has no entry for version {__version__!r} "
@@ -128,7 +128,7 @@ def build_manifest(
         m = re.search(r"STAGE_(\d+)\.md$", path.name)
         if not m:
             continue
-        if "CLOSED" in path.read_text():
+        if "CLOSED" in path.read_text(encoding="utf-8"):
             closed.append(int(m.group(1)))
 
     return ReleaseManifest(

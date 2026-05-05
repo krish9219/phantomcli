@@ -211,6 +211,23 @@ def execute_bash(req: ExecuteBashRequest) -> ExecuteBashResult:
         network=req.network,
         limits=req.limits,
     )
-    argv = ["/bin/sh", "-c", req.command]
+    argv = _shell_argv(req.command)
     sr = run(argv, policy)
     return ExecuteBashResult.from_sandbox(sr)
+
+
+def _shell_argv(command: str) -> list[str]:
+    """Return the argv that runs ``command`` through the host's shell.
+
+    POSIX uses ``/bin/sh -c CMD``. Windows has no ``/bin/sh``; we route
+    through ``cmd.exe /c CMD`` since that's guaranteed present and
+    handles redirects + chained commands the same as the POSIX path.
+    Operators wanting PowerShell semantics can pass an explicit
+    ``["powershell", "-Command", ...]`` argv themselves.
+    """
+    import sys
+    if sys.platform == "win32":
+        # ``cmd.exe`` is on PATH via SystemRoot; the env builder in the
+        # passthrough backend already preserves SystemRoot on Windows.
+        return ["cmd.exe", "/c", command]
+    return ["/bin/sh", "-c", command]

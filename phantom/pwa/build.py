@@ -152,14 +152,14 @@ def build_pwa(
     manifest = build_manifest(name=site_name, short_name=short_name)
     sw = build_service_worker(cache_version=cache_version)
 
-    (target / "index.html").write_text(_INDEX_HTML)
+    (target / "index.html").write_text(_INDEX_HTML, encoding="utf-8")
     (target / "manifest.webmanifest").write_text(
-        json.dumps(manifest, indent=2)
+        json.dumps(manifest, indent=2), encoding="utf-8"
     )
-    (target / "service-worker.js").write_text(sw)
-    (target / "main.js").write_text(_MAIN_JS)
-    (target / "main.css").write_text(_MAIN_CSS)
-    (target / "README.md").write_text(_README)
+    (target / "service-worker.js").write_text(sw, encoding="utf-8")
+    (target / "main.js").write_text(_MAIN_JS, encoding="utf-8")
+    (target / "main.css").write_text(_MAIN_CSS, encoding="utf-8")
+    (target / "README.md").write_text(_README, encoding="utf-8")
 
     png = _tiny_png()
     (target / "icon-192.png").write_bytes(png)

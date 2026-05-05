@@ -52,8 +52,12 @@ class TestDefaultFallbackPlan:
         from omnicli.agents import AgentOrchestrator
         orch = AgentOrchestrator("build a demo app", trust_level=2)
         plan = orch._default_fallback_plan()
-        # Cap might be <4 on low-memory machines; but at least 2
-        assert 2 <= len(plan) <= 4
+        # Cap is bounded by max_agents which scales with cores+RAM.
+        # GitHub macOS runners are 3-core → core_limit=1 → max_agents=1.
+        # The fallback respects that bound — minimum is 1 (not 2) on
+        # constrained hosts. We just want to ensure the plan exists and
+        # never exceeds the documented cap of 4.
+        assert 1 <= len(plan) <= 4
 
     def test_each_task_has_files(self):
         """The whole point of the fallback — no '0 files' tasks."""

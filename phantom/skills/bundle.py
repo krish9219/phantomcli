@@ -52,7 +52,7 @@ class SkillBundle:
         skill_md = d / "SKILL.md"
         if not skill_md.exists():
             raise PhantomError(f"no SKILL.md in {d}")
-        text = skill_md.read_text()
+        text = skill_md.read_text(encoding="utf-8")
         m = _FRONT_RE.match(text)
         if not m:
             raise PhantomError(

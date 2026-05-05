@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import socket
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -24,6 +25,21 @@ from phantom.daemon.transport import (
     make_listener_socket,
     remove_endpoint_artifacts,
 )
+
+
+@pytest.fixture
+def short_tmp_path():
+    """A short tmpdir suitable for AF_UNIX sockets on macOS.
+
+    macOS limits AF_UNIX paths to 104 bytes; pytest's ``tmp_path`` lives
+    under ``/private/var/folders/...`` which can blow past that with a
+    test-name suffix. Use ``/tmp`` directly (which on macOS resolves to
+    ``/private/tmp`` but the symlink path is what AF_UNIX actually sees,
+    and it's ~5 chars).
+    """
+    base = "/tmp" if sys.platform == "darwin" else None
+    with tempfile.TemporaryDirectory(prefix="ph-", dir=base) as d:
+        yield Path(d)
 
 
 # ─── Endpoint dataclass + parsing ───────────────────────────────────────────
@@ -103,10 +119,10 @@ def test_listener_socket_tcp_binds_to_loopback(tmp_path: Path):
         s.close()
 
 
-def test_listener_socket_unix_creates_file(tmp_path: Path):
+def test_listener_socket_unix_creates_file(short_tmp_path: Path):
     if sys.platform == "win32":
         pytest.skip("AF_UNIX availability on Windows depends on build")
-    ep = Endpoint(family="unix", path=str(tmp_path / "x.sock"))
+    ep = Endpoint(family="unix", path=str(short_tmp_path / "x.sock"))
     s = make_listener_socket(ep)
     try:
         assert Path(ep.path).exists()
@@ -114,10 +130,10 @@ def test_listener_socket_unix_creates_file(tmp_path: Path):
         s.close()
 
 
-def test_listener_socket_unix_owner_only_perms(tmp_path: Path):
+def test_listener_socket_unix_owner_only_perms(short_tmp_path: Path):
     if sys.platform == "win32":
         pytest.skip("Unix mode bits not meaningful on Windows")
-    ep = Endpoint(family="unix", path=str(tmp_path / "perm.sock"))
+    ep = Endpoint(family="unix", path=str(short_tmp_path / "perm.sock"))
     s = make_listener_socket(ep)
     try:
         import os
@@ -127,10 +143,10 @@ def test_listener_socket_unix_owner_only_perms(tmp_path: Path):
         s.close()
 
 
-def test_remove_endpoint_artifacts_unix(tmp_path: Path):
+def test_remove_endpoint_artifacts_unix(short_tmp_path: Path):
     if sys.platform == "win32":
         pytest.skip("AF_UNIX availability on Windows depends on build")
-    ep = Endpoint(family="unix", path=str(tmp_path / "cleanup.sock"))
+    ep = Endpoint(family="unix", path=str(short_tmp_path / "cleanup.sock"))
     s = make_listener_socket(ep)
     s.close()
     assert Path(ep.path).exists()

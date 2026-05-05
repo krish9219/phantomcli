@@ -52,7 +52,15 @@ class TestPhantomRun:
         )
         # Exit code 126 = blocked by policy.
         assert result.exit_code == 126
-        assert "blocked" in result.stderr.lower() or "blocked" in result.output.lower()
+        # ``result.stderr`` only exists if the runner was constructed with
+        # ``mix_stderr=False``; on click ≥ 8.2 the default merges streams
+        # and asking for stderr alone raises. Probe defensively so the
+        # test works against both old and new click.
+        try:
+            stderr_text = result.stderr.lower()
+        except (ValueError, AttributeError):
+            stderr_text = ""
+        assert "blocked" in stderr_text or "blocked" in result.output.lower()
 
     def test_timeout_exits_124(self, runner, tmp_path):
         # Generous deadline + long sleep so this test does not flake

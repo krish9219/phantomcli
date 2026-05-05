@@ -12,6 +12,11 @@ import struct
 
 import pytest
 
+# faster-whisper / piper-tts pull in numpy at import time. If voice extras
+# aren't installed, skip the whole module rather than failing the suite —
+# this matches the [voice] optional-dependency contract.
+pytest.importorskip("numpy")
+
 from phantom.voice import VoiceFrame, VoiceTurn
 from phantom.voice.engines.piper import PiperTTS
 from phantom.voice.engines.whisper import FasterWhisperSTT

@@ -171,7 +171,7 @@ def build_app(config: DashboardConfig | None = None) -> Any:
     @app.get("/", response_class=HTMLResponse)
     async def _root():
         index = _STATIC_DIR / "index.html"
-        return HTMLResponse(index.read_text())
+        return HTMLResponse(index.read_text(encoding="utf-8"))
 
     @app.get("/api/health")
     async def _health():

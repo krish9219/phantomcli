@@ -47,7 +47,7 @@ class PluginRegistry:
         if not target.exists():
             return cls(path=target, _enabled={})
         try:
-            data: Any = json.loads(target.read_text())
+            data: Any = json.loads(target.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             raise PluginError(f"plugin registry corrupted: {target}: {exc}") from exc
         if not isinstance(data, dict):
@@ -87,5 +87,7 @@ class PluginRegistry:
         self._save()
 
     def _save(self) -> None:
-        self.path.write_text(json.dumps(self._enabled, sort_keys=True, indent=2))
+        self.path.write_text(
+            json.dumps(self._enabled, sort_keys=True, indent=2), encoding="utf-8"
+        )
         os.chmod(self.path, 0o600)

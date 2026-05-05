@@ -9,13 +9,17 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-BIN = REPO / "dist" / "phantom"
+# PyInstaller appends ``.exe`` on Windows; the smoke tests need to look
+# for whichever form actually got built.
+_BIN_NAME = "phantom.exe" if sys.platform == "win32" else "phantom"
+BIN = REPO / "dist" / _BIN_NAME
 
 
 pytestmark = pytest.mark.skipif(
@@ -34,6 +38,12 @@ def _run(argv: list[str], timeout: float = 30.0) -> subprocess.CompletedProcess:
 
 
 def test_binary_is_executable():
+    if sys.platform == "win32":
+        # Windows uses file extensions (.exe) to determine executability,
+        # not POSIX mode bits. The presence of the .exe suffix and the
+        # fact that BIN exists is the executability check on Windows.
+        assert BIN.suffix.lower() == ".exe"
+        return
     st = os.stat(BIN)
     assert st.st_mode & 0o111, "binary is not executable"
 

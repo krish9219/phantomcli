@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 
 import pytest
 
@@ -18,10 +19,36 @@ from phantom.sandbox.backends.unshare import UnshareBackend, _truncate
 from phantom.sandbox.policy import ResourceLimits, SandboxPolicy
 
 
-# Skip every test in this file if the host can't run unshare.
+def _can_unshare() -> bool:
+    """True iff ``unshare`` and ``prlimit`` are on PATH AND the kernel
+    actually grants the namespaces we need.
+
+    GitHub-hosted Linux runners ship the ``unshare`` binary but the
+    runner sandbox refuses CAP_SYS_ADMIN, so probing the binary alone
+    isn't enough — we have to actually try a namespace creation. The
+    full backend probe would do this; we duplicate the cheapest case
+    here to gate every test in the module at collection time.
+    """
+    if shutil.which("unshare") is None or shutil.which("prlimit") is None:
+        return False
+    try:
+        r = subprocess.run(
+            ["unshare", "--user", "--mount", "--fork", "true"],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+# Skip every test in this file if the host can't run unshare. The
+# runtime probe also catches restricted CI runners (GitHub Actions Linux
+# refuses namespace creation even though the binary is present).
 unshare_available = pytest.mark.skipif(
-    shutil.which("unshare") is None or shutil.which("prlimit") is None,
-    reason="unshare or prlimit not on PATH",
+    not _can_unshare(),
+    reason="unshare or prlimit unavailable, or kernel refuses namespace creation (e.g. GitHub-hosted runner sandbox)",
 )
 
 

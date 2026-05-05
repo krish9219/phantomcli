@@ -13,7 +13,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            python: "3.12"
+          - os: macos-latest
+            python: "3.12"
+          # Windows: pin to 3.12 deliberately. PyInstaller 6.19's bootloader
+          # hits a "Failed to load Python DLL" / LoadLibrary error on the
+          # 3.13 build that ships with hosted runners — the ABI changes in
+          # 3.13 around _PyInterpreterState_GetMainThreadState aren't yet
+          # accounted for. 3.12 ships a known-good combination.
+          - os: windows-latest
+            python: "3.12"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -21,7 +32,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python }}
           cache: pip
 
       - name: Install build deps

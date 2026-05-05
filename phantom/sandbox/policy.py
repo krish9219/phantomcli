@@ -39,6 +39,7 @@ False
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Final
 
@@ -233,7 +234,8 @@ class SandboxPolicy:
     def __post_init__(self) -> None:
         if not self.workdir:
             raise ConfigError("workdir is required")
-        if not self.workdir.startswith("/"):
+        # Cross-platform absoluteness: POSIX leading "/" or Windows drive-letter root.
+        if not os.path.isabs(self.workdir):
             raise ConfigError(f"workdir must be absolute, got {self.workdir!r}")
 
         # workdir must be within at least one writable mount.

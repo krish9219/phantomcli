@@ -39,9 +39,9 @@ def test_phantom_version_is_stage_0_dev() -> None:
     """`phantom.__version__` is the Stage-0 development pin."""
     import phantom
 
-    assert phantom.__version__ in {"4.0.0-dev", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5", "4.0.6", "4.0.7", "4.0.8", "4.0.9", "4.0.10", "1.0.0"}
+    assert phantom.__version__ in {"4.0.0-dev", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5", "4.0.6", "4.0.7", "4.0.8", "4.0.9", "4.0.10", "1.0.0", "1.0.1"}
     # Tuple form is parseable and consistent with the string form.
-    assert phantom.VERSION_TUPLE in {(4, 0, 0), (1, 0, 0)}
+    assert phantom.VERSION_TUPLE in {(4, 0, 0), (1, 0, 0), (1, 0, 1)}
 
 
 @pytest.mark.stage0
@@ -80,7 +80,7 @@ def test_omnicli_legacy_package_still_imports() -> None:
     """ADR-0002: the v3 package keeps importing without modification."""
     import omnicli
 
-    assert omnicli.__version__ in {"3.0.12", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5", "4.0.6", "4.0.7", "4.0.8", "4.0.9", "4.0.10", "1.0.0"}
+    assert omnicli.__version__ in {"3.0.12", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5", "4.0.6", "4.0.7", "4.0.8", "4.0.9", "4.0.10", "1.0.0", "1.0.1"}
 
 
 @pytest.mark.stage0
