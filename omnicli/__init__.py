@@ -9,4 +9,4 @@ when a v3 patch lands. ``phantom._version.__version__`` is the v4 dev
 version and bumps independently.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"

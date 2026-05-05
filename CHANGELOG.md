@@ -13,6 +13,39 @@ The major version cadence:
 
 ---
 
+## [1.0.1] — 2026-05-05 — Windows support
+
+First public release with Windows runtime support.
+
+### Added
+
+* **Cross-platform daemon transport** (`phantom/daemon/transport.py`):
+  unix sockets on POSIX, TCP loopback (`127.0.0.1`) on Windows with a
+  per-user port hashed from `$USERNAME`. Same newline-delimited JSON
+  wire format on both backends.
+* **Windows passthrough sandbox** (`phantom/sandbox/backends/passthrough.py`):
+  v1.0 fallback that runs commands without isolation, emits a one-shot
+  loud audit warning, and disables Trust Level 4 by default. Tier rank
+  99 so any real backend is always preferred. ADR-0007 documents the
+  AppContainer plan for v1.2.
+* **Windows encoding regression net** (`phantom/tests/test_windows_encoding_audit.py`):
+  fails any v1.0 module using `open()` / `read_text()` / `write_text()`
+  without explicit `encoding="utf-8"` (Windows defaults to cp1252 and
+  silently mangles non-ASCII).
+* `.github/workflows/tests.yml` — CI workflow for the test suite.
+
+### Changed
+
+* `phantom/daemon/server.py` and `client.py` refactored onto the new
+  cross-platform transport.
+* `phantom/voice/dictate.py` — Windows-aware audio recorder selection.
+* macOS daemon warm-up: retry ping on connect-before-accept race.
+
+### Documented
+
+* `docs/adr/0007-windows-sandbox.md` — accepted: passthrough now,
+  AppContainer in v1.2.
+
 ## [1.0.0] — 2026-05-04 — UNIFIED RELEASE
 
 PhantomCLI renumbers from 4.0.10 to start the **v1.0** line cleanly.
