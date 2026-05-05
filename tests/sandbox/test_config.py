@@ -22,7 +22,9 @@ class TestDefaultConfigPath:
 
     def test_falls_back_to_home(self, tmp_path, monkeypatch):
         monkeypatch.delenv("PHANTOM_HOME", raising=False)
+        # Path.home() reads HOME on POSIX and USERPROFILE on Windows.
         monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
         p = default_config_path()
         assert p == tmp_path / ".phantom" / "config.json"
 

@@ -225,9 +225,16 @@ def _shell_argv(command: str) -> list[str]:
     Operators wanting PowerShell semantics can pass an explicit
     ``["powershell", "-Command", ...]`` argv themselves.
     """
+    import os
     import sys
     if sys.platform == "win32":
-        # ``cmd.exe`` is on PATH via SystemRoot; the env builder in the
-        # passthrough backend already preserves SystemRoot on Windows.
-        return ["cmd.exe", "/c", command]
+        # Resolve cmd.exe via COMSPEC/SystemRoot rather than relying on
+        # PATH — the sandbox env builder may not propagate the System32
+        # directory.
+        comspec = os.environ.get("COMSPEC")
+        if not comspec:
+            sysroot = os.environ.get("SystemRoot") or os.environ.get("SYSTEMROOT")
+            comspec = (os.path.join(sysroot, "System32", "cmd.exe")
+                       if sysroot else "cmd.exe")
+        return [comspec, "/c", command]
     return ["/bin/sh", "-c", command]

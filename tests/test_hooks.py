@@ -52,6 +52,7 @@ class TestPreToolUseBlock:
         assert r.exit_code == 2
         assert "exit 2" in r.reason
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="hook command uses POSIX shell syntax (>&2, ;) that cmd.exe doesn't understand")
     def test_stderr_captured(self, isolated_hooks_config):
         _write_config(isolated_hooks_config, {
             "PreToolUse": [{"match": "*", "cmd": ">&2 echo BLOCKED; exit 7"}],
@@ -143,6 +144,7 @@ class TestMalformedConfig:
 # ─── Full 9-event lifecycle coverage ────────────────────────────────────────
 
 class TestUserPromptSubmit:
+    @pytest.mark.skipif(sys.platform == "win32", reason="hook command uses POSIX shell syntax (>&2, ;) that cmd.exe doesn't understand")
     def test_block_on_nonzero(self, isolated_hooks_config):
         _write_config(isolated_hooks_config, {
             "UserPromptSubmit": [{"match": "*", "cmd": ">&2 echo no; exit 1"}],
@@ -178,6 +180,7 @@ class TestUserPromptSubmit:
         assert ok is True
         assert out == "REWRITTEN"
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="hook command uses POSIX shell syntax (>&2, ;) that cmd.exe doesn't understand")
     def test_apply_prompt_rewrite_chain(self, isolated_hooks_config):
         """Second hook's stdout wins when both rewrite. First hook's output
         is passed as the `prompt` field in the next hook's stdin payload."""
@@ -200,6 +203,7 @@ class TestUserPromptSubmit:
         # First hook rewrote to "STEP1"; second hook saw prompt="STEP1" and emits "STEP1+B"
         assert out == "STEP1+B"
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="hook command uses POSIX shell syntax (>&2, ;) that cmd.exe doesn't understand")
     def test_apply_prompt_rewrite_block_returns_reason(self, isolated_hooks_config):
         from omnicli.hooks import apply_prompt_rewrite
         _write_config(isolated_hooks_config, {
@@ -223,6 +227,7 @@ class TestStop:
 
 
 class TestSubagentStop:
+    @pytest.mark.skipif(sys.platform == "win32", reason="hook command uses POSIX shell syntax (>&2, ;) that cmd.exe doesn't understand")
     def test_subagent_stop_is_informational(self, isolated_hooks_config, tmp_path):
         marker = tmp_path / "sub.touched"
         _write_config(isolated_hooks_config, {

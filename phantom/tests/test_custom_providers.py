@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -62,6 +63,7 @@ def test_remove(registry_path: Path):
     assert reg.remove("x") is False
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file-mode bits aren't enforceable on Windows")
 def test_persisted_file_is_owner_only(registry_path: Path):
     reg = ProviderRegistry.load(registry_path)
     reg.add(CustomProvider(name="x", base_url="https://x", model="m"))

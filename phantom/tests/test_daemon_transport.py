@@ -234,11 +234,11 @@ def test_client_raises_when_no_tcp_daemon():
 # ─── backwards compatibility ────────────────────────────────────────────────
 
 
-def test_legacy_socket_path_kwarg_still_works(tmp_path: Path):
+def test_legacy_socket_path_kwarg_still_works(short_tmp_path: Path):
     """Older test code passes ``socket_path=`` — must keep working on POSIX."""
     if sys.platform == "win32":
         pytest.skip("POSIX-only legacy path")
-    sp = str(tmp_path / "legacy.sock")
+    sp = str(short_tmp_path / "legacy.sock")
     server = build_default_server(socket_path=sp)
     t = threading.Thread(target=server.start, daemon=True)
     t.start()

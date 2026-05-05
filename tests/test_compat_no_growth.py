@@ -45,7 +45,7 @@ def _public_names_of(path: Path) -> list[str]:
     excluded — they are usually private state, not public API.
     """
     names: set[str] = set()
-    tree = ast.parse(path.read_text(), str(path))
+    tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
     for node in tree.body:
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
             if not node.name.startswith("_"):
@@ -77,7 +77,7 @@ def _current_surface() -> dict[str, list[str]]:
 @pytest.mark.security
 def test_omnicli_public_surface_has_not_grown() -> None:
     """ADR-0002: no new public symbols may be added to `omnicli`."""
-    expected = json.loads(SNAPSHOT_PATH.read_text())
+    expected = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
     actual = _current_surface()
 
     # Allow EXACT match. Both directions matter:

@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 
 import pytest
 
@@ -88,6 +89,7 @@ def test_select_backend_returns_some_backend() -> None:
 
 @pytest.mark.stage1
 @sandbox_capable
+@pytest.mark.skipif(sys.platform == "win32", reason="stage-closure smoke tests assume POSIX sandbox semantics")
 def test_round_trip_echo(tmp_path) -> None:
     from phantom.sandbox import SandboxPolicy, run, select_backend
     policy = SandboxPolicy(
@@ -104,6 +106,7 @@ def test_round_trip_echo(tmp_path) -> None:
 
 @pytest.mark.stage1
 @sandbox_capable
+@pytest.mark.skipif(sys.platform == "win32", reason="stage-closure smoke tests assume POSIX sandbox semantics")
 def test_timeout_raises(tmp_path) -> None:
     from phantom.sandbox import SandboxPolicy, run
     from phantom.sandbox.policy import ResourceLimits
@@ -122,6 +125,7 @@ def test_timeout_raises(tmp_path) -> None:
 
 @pytest.mark.stage1
 @sandbox_capable
+@pytest.mark.skipif(sys.platform == "win32", reason="stage-closure smoke tests assume POSIX sandbox semantics")
 def test_audit_log_one_record_per_call(tmp_path) -> None:
     from phantom.sandbox import SandboxPolicy, run
     audit = tmp_path / "audit.log"

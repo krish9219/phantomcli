@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -136,6 +137,7 @@ def test_store_persists_across_instances(store_path: Path):
     assert s2.all()[0].endpoint == "https://push/persisted"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file-mode bits aren't enforceable on Windows")
 def test_store_file_perms_owner_only(store_path: Path):
     s = SubscriptionStore(path=store_path)
     s.add(_sub())

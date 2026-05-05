@@ -112,23 +112,23 @@ class TestDelete:
 
 class TestTtl:
     def test_expired_row_returns_none(self):
-        sp.put("s1", "a", "k", "v", ttl_s=0.05)
+        sp.put("s1", "a", "k", "v", ttl_s=0.5)
         assert sp.get("s1", "a", "k") == "v"
-        time.sleep(0.1)
+        time.sleep(1.0)
         assert sp.get("s1", "a", "k") is None
 
     def test_expired_excluded_from_get_all(self):
-        sp.put("s1", "a", "k1", "v", ttl_s=0.05)
+        sp.put("s1", "a", "k1", "v", ttl_s=0.5)
         sp.put("s1", "a", "k2", "v")  # no TTL — lives forever
-        time.sleep(0.1)
+        time.sleep(1.0)
         rows = sp.get_all("s1")
         assert len(rows) == 1
         assert rows[0].key == "k2"
 
     def test_cleanup_expired_removes_rows(self):
-        sp.put("s1", "a", "k1", "v", ttl_s=0.05)
+        sp.put("s1", "a", "k1", "v", ttl_s=0.5)
         sp.put("s1", "a", "k2", "v")
-        time.sleep(0.1)
+        time.sleep(1.0)
         removed = sp.cleanup_expired()
         assert removed == 1
         rows = sp.get_all("s1")
@@ -136,7 +136,7 @@ class TestTtl:
 
     def test_no_ttl_never_expires(self):
         sp.put("s1", "a", "k", "v")
-        time.sleep(0.1)
+        time.sleep(1.0)
         assert sp.get("s1", "a", "k") == "v"
 
 

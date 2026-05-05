@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,15 @@ from phantom.sandbox.audit import (
 )
 from phantom.sandbox.policy import ResourceLimits, SandboxPolicy
 
+# POSIX file-mode bits aren't enforceable on Windows: ``os.chmod`` ignores
+# permission bits, and ``Path.stat().st_mode`` reflects the FAT/NTFS-style
+# defaults (0o666 for files, 0o777 for dirs). Tests that *only* assert
+# file-mode behaviour skip on Windows.
+_skip_on_win32 = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="POSIX file-mode bits are not enforceable on Windows.",
+)
+
 
 # ─── default_audit_path ───────────────────────────────────────────────────────
 
@@ -31,6 +41,7 @@ class TestDefaultAuditPath:
         p = default_audit_path()
         assert p == tmp_path / "ph" / "sandbox-audit.log"
 
+    @_skip_on_win32
     def test_creates_parent_dir_with_mode_0700(self, tmp_path, monkeypatch):
         target = tmp_path / "ph"
         monkeypatch.setenv("PHANTOM_HOME", str(target))
@@ -48,7 +59,10 @@ class TestDefaultAuditPath:
 
     def test_falls_back_to_home_when_no_env(self, tmp_path, monkeypatch):
         monkeypatch.delenv("PHANTOM_HOME", raising=False)
+        # Path.home() consults HOME on POSIX and USERPROFILE on Windows;
+        # set both so the test works on every host.
         monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
         p = default_audit_path()
         assert p == tmp_path / ".phantom" / "sandbox-audit.log"
 
@@ -115,6 +129,7 @@ class TestAuditWriter:
         w.write(_sample_record())
         assert path.exists()
 
+    @_skip_on_win32
     def test_file_mode_is_0600(self, tmp_path):
         path = tmp_path / "audit.log"
         w = AuditWriter(path)
@@ -122,6 +137,7 @@ class TestAuditWriter:
         mode = stat.S_IMODE(path.stat().st_mode)
         assert mode == 0o600
 
+    @_skip_on_win32
     def test_file_mode_repaired_on_subsequent_write(self, tmp_path):
         path = tmp_path / "audit.log"
         w = AuditWriter(path)

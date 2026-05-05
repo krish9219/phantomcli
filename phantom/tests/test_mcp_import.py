@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ from phantom.mcp.import_config import (
 @pytest.fixture
 def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("PHANTOM_HOME", str(tmp_path / ".phantom"))
     return tmp_path
 
@@ -88,6 +90,7 @@ def test_first_source_wins_on_collision(fake_home: Path):
     assert body["mcpServers"]["shared"]["command"] == "/from-claude"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file-mode bits aren't enforceable on Windows")
 def test_target_file_perms_owner_only(fake_home: Path):
     _write_mcp(fake_home / ".claude" / "mcp.json", {"x": {"command": "/x"}})
     import_mcp_configs(cwd=fake_home)

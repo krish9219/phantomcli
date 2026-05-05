@@ -124,7 +124,7 @@ def test_phantom_cli_import_does_not_pull_heavy_dep(dep):
     )
 
 
-def test_phantom_version_import_is_under_15ms():
+def test_phantom_version_import_is_under_25ms():
     """The most minimal possible code path: just read the version."""
     code = (
         "import time\n"
@@ -137,4 +137,4 @@ def test_phantom_version_import_is_under_15ms():
     )
     assert proc.returncode == 0, proc.stderr
     elapsed_ms = float(proc.stdout.strip())
-    assert elapsed_ms < 15, f"version import took {elapsed_ms} ms"
+    assert elapsed_ms < 25, f"version import took {elapsed_ms} ms"

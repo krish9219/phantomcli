@@ -73,11 +73,12 @@ def test_binary_doctor_runs():
 
 
 def test_binary_bench_returns_v1():
+    from phantom._version import __version__
     res = _run(["bench", "--turns", "10", "--json"], timeout=60)
     assert res.returncode == 0, res.stderr
     import json as _json
     payload = _json.loads(res.stdout)
-    assert payload["version"] == "1.0.0"
+    assert payload["version"] == __version__
     assert payload["cold_start_ms"] > 0
     assert payload["daemon_start_ms"] >= 0
 

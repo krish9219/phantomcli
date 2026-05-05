@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -147,6 +148,7 @@ def test_renderer_falls_back_to_ascii_when_no_mmdc(monkeypatch: pytest.MonkeyPat
     assert "no mmdc" in out
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="mmdc shim is a node script — not directly executable on Windows runners")
 def test_renderer_uses_kitty_when_mmdc_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Inject a fake mmdc that writes our tiny PNG; assert kitty escape emitted."""
     fake_mmdc = tmp_path / "mmdc"
@@ -173,6 +175,7 @@ def test_renderer_uses_kitty_when_mmdc_present(tmp_path: Path, monkeypatch: pyte
     assert out.startswith("\x1b_Ga=T,f=100")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="mmdc shim is a node script — not directly executable on Windows runners")
 def test_renderer_falls_back_to_ascii_when_mmdc_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     fake_mmdc = tmp_path / "mmdc"
     fake_mmdc.write_text("#!/bin/sh\nexit 1\n")

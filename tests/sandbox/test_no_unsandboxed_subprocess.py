@@ -102,7 +102,7 @@ def test_no_unsandboxed_subprocess_in_phantom_package():
     for path in _python_files_under(PHANTOM_DIR):
         if path in ALLOWED:
             continue
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         for lineno, line in enumerate(text.splitlines(), start=1):
             # Skip comments and docstrings — minimal heuristic, sufficient for
             # our codebase. We only flag lines that are *not* a comment.

@@ -429,7 +429,7 @@ class JsRenamer:
         scanner.scan()
         new_source, replaced = _rewrite(source, scanner.locations, old, new)
         return JsRefactorResult(
-            path=str(self.request.path),
+            path=self.request.path.as_posix(),
             new_source=new_source,
             occurrences_renamed=replaced,
             skipped_due_to_shadowing=scanner.shadow_skips,

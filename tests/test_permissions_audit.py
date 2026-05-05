@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 import pytest
 
@@ -44,6 +45,7 @@ class TestAuditEnabledByDefault:
         assert rows[-1]["decision"] == "ask"
         assert "no matching" in rows[-1]["reason"]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="glob patterns use POSIX path separators; Windows path matching needs separate test coverage")
     def test_matched_pattern_captured(self):
         from omnicli import audit_log
         p = Permissions(allow=["write:/tmp/**"])

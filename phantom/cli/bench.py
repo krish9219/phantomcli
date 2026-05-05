@@ -103,27 +103,22 @@ def _measure_daemon_roundtrip_ms() -> float:
     import tempfile
     from phantom.daemon.client import DaemonClient
     from phantom.daemon.server import build_default_server
+    from phantom.daemon.transport import Endpoint, default_endpoint, is_windows
 
     with tempfile.TemporaryDirectory() as td:
-        sock_path = str(Path(td) / "bench.sock")
-        server = build_default_server(socket_path=sock_path)
+        if is_windows():
+            endpoint = default_endpoint()
+        else:
+            endpoint = Endpoint(family="unix", path=str(Path(td) / "bench.sock"))
+        server = build_default_server(endpoint=endpoint)
         t = threading.Thread(target=server.start, daemon=True)
         t.start()
-        for _ in range(200):
-            if Path(sock_path).exists():
-                break
-            time.sleep(0.005)
-        if not Path(sock_path).exists():
-            raise RuntimeError("daemon failed to start for bench")
         try:
             from phantom.daemon.client import DaemonNotRunning
-            client = DaemonClient(socket_path=sock_path)
-            # macOS races: the socket file appears as soon as bind()
-            # returns, but connect() refuses until the server has also
-            # called listen()+accept(). Linux happens to block; macOS
-            # doesn't. Retry the warm-up ping for up to 500 ms before
-            # declaring the daemon broken.
-            for _ in range(100):
+            client = DaemonClient(endpoint=endpoint)
+            # Wait for the server to accept connections. On POSIX we can
+            # poll the socket path, but on TCP we just retry the ping.
+            for _ in range(200):
                 try:
                     client.call("ping")
                     break

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import socket
+import sys
 import tempfile
 import threading
 import time
@@ -76,6 +77,7 @@ def test_protocol_response_error():
     assert resp.error == "boom"
 
 
+@pytest.mark.skipif(getattr(socket, 'AF_UNIX', None) is None, reason="socket.AF_UNIX not available on this Windows build")
 def test_client_raises_when_no_daemon(socket_path: str):
     client = DaemonClient(socket_path=socket_path)
     with pytest.raises(DaemonNotRunning):

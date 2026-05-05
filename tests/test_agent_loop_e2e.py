@@ -21,6 +21,7 @@ Russian roulette with live providers.
 from __future__ import annotations
 
 import json
+import sys
 from unittest.mock import MagicMock
 
 import pytest
@@ -122,6 +123,7 @@ class TestSchemaRejection:
 
 
 class TestHookIntegration:
+    @pytest.mark.skipif(sys.platform == "win32", reason="hook command uses POSIX shell syntax (>&2, ;) that cmd.exe doesn't understand")
     def test_pre_hook_blocks(self, monkeypatch, isolated_hooks_config):
         isolated_hooks_config.write_text(json.dumps({
             "PreToolUse": [{"match": "*", "cmd": ">&2 echo NO; exit 3"}],

@@ -4,6 +4,7 @@ after."""
 from __future__ import annotations
 
 import json
+import sys
 
 import pytest
 
@@ -49,6 +50,7 @@ class TestSchemaRejection:
 
 
 class TestHookBlocking:
+    @pytest.mark.skipif(sys.platform == "win32", reason="hook command uses POSIX shell syntax (>&2, ;) that cmd.exe doesn't understand")
     def test_pre_hook_block_short_circuits(self, monkeypatch, isolated_hooks_config):
         """When a PreToolUse hook exits non-zero, the tool must not run."""
         isolated_hooks_config.write_text(json.dumps({

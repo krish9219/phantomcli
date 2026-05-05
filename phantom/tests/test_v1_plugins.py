@@ -7,6 +7,7 @@ they remain pure-Python and have no Playwright / gh CLI / network deps.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -127,6 +128,7 @@ def test_github_pr_unknown_op_rejected(tmp_path: Path):
     assert isinstance(out.get("error"), str) and out["error"]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="gh CLI isn't installed on the GitHub Windows runner")
 def test_github_pr_view_requires_number(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # Pretend gh exists so we exercise the validation path
     monkeypatch.setenv("PATH", str(tmp_path) + ":" + (Path("/usr/bin")).as_posix())

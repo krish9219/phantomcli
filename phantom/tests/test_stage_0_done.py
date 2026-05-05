@@ -151,7 +151,7 @@ def test_required_documentation_deliverable_exists(rel_path: str) -> None:
 @pytest.mark.stage0
 def test_changelog_mentions_stage_0() -> None:
     """The CHANGELOG entry for the in-progress release names Stage 0."""
-    text = (REPO_ROOT / "CHANGELOG.md").read_text()
+    text = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     assert ("[Unreleased] — 4.0.0-dev" in text) or ("[4.0.0]" in text) or ("[1.0.0]" in text)
     assert "Stage 0" in text
 
@@ -159,7 +159,7 @@ def test_changelog_mentions_stage_0() -> None:
 @pytest.mark.stage0
 def test_pyproject_declares_phantom_package() -> None:
     """pyproject.toml ships both packages."""
-    text = (REPO_ROOT / "pyproject.toml").read_text()
+    text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert 'include = ["phantom*", "omnicli*"]' in text
     assert "phantom-cli" in text
     assert 'phantom    = "phantom.cli:main"' in text
@@ -168,6 +168,6 @@ def test_pyproject_declares_phantom_package() -> None:
 @pytest.mark.stage0
 def test_adr_index_lists_all_six_adrs() -> None:
     """The ADR index references every ADR file present in docs/adr/."""
-    index = (REPO_ROOT / "docs" / "adr" / "README.md").read_text()
+    index = (REPO_ROOT / "docs" / "adr" / "README.md").read_text(encoding="utf-8")
     for n in range(1, 7):
         assert f"| 000{n}|" in index, f"ADR-000{n} not listed in docs/adr/README.md"

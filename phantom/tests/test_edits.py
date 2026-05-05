@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -152,6 +153,7 @@ def test_commit_handles_delete(tmp_path: Path):
     assert str(p) in result.files_deleted
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file-mode bits aren't enforceable on Windows")
 def test_commit_preserves_existing_file_mode(tmp_path: Path):
     p = tmp_path / "exec.sh"
     p.write_text("#!/bin/sh\necho hi\n")

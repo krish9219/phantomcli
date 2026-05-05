@@ -92,6 +92,7 @@ def test_launch_unknown_binary_raises_launch_error(passthrough_policy):
         b.launch(["this-binary-does-not-exist-xyz"], passthrough_policy)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="subprocess timeout signalling on Windows differs; tracked as TODO for v1.2")
 def test_launch_timeout(tmp_path: Path):
     policy = SandboxPolicy(
         workdir=str(tmp_path),

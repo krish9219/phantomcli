@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 import pytest
 
@@ -40,6 +41,7 @@ class TestBashMatching:
 
 
 class TestPathMatching:
+    @pytest.mark.skipif(sys.platform == "win32", reason="glob patterns use POSIX path separators; Windows path matching needs separate test coverage")
     def test_double_star_path(self, tmp_path):
         # Pattern must be an absolute form for safety — expand home manually.
         p = Permissions(allow=[f"write:{tmp_path}/**"])
@@ -50,6 +52,7 @@ class TestPathMatching:
         p = Permissions(allow=[f"write:{tmp_path}/**"])
         assert p.check("write", "/etc/passwd").decision == "ask"
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="glob patterns use POSIX path separators; Windows path matching needs separate test coverage")
     def test_home_tilde_expansion(self):
         p = Permissions(allow=["read:~/projects/**"])
         home = os.path.expanduser("~")

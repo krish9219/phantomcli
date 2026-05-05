@@ -133,7 +133,8 @@ class PassthroughBackend(SandboxBackend):
         # On Windows we also need SystemRoot for many tools to work.
         if sys.platform == "win32":
             for must_keep in ("SYSTEMROOT", "SystemRoot", "TEMP", "TMP",
-                              "LOCALAPPDATA", "APPDATA", "USERPROFILE"):
+                              "LOCALAPPDATA", "APPDATA", "USERPROFILE",
+                              "COMSPEC", "PATHEXT"):
                 if must_keep not in out and must_keep in os.environ:
                     out[must_keep] = os.environ[must_keep]
         return out

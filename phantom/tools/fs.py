@@ -82,7 +82,7 @@ def read_file(
         truncated = size > max_bytes
         with target.open("rb") as fh:
             data = fh.read(max_bytes)
-        text = data.decode("utf-8", errors="replace")
+        text = data.decode("utf-8", errors="replace").replace("\r\n", "\n")
         if truncated:
             text += "\n[phantom: file truncated]"
         return {

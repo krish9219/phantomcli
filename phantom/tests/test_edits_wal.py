@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -66,6 +67,7 @@ def test_wal_version_constant_is_one():
 # ─── on-disk WAL primitives ─────────────────────────────────────────────────
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file-mode bits aren't enforceable on Windows")
 def test_write_wal_creates_owner_only_file(wal_dir: Path):
     rec = WalRecord(txn_id=make_txn_id(), started_at=0, entries=())
     path = write_wal(rec, wal_dir=wal_dir)
@@ -180,6 +182,7 @@ def test_recover_handles_corrupt_wal(wal_dir: Path):
     assert bad.exists()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file-mode bits aren't enforceable on Windows")
 def test_recover_preserves_file_mode(wal_dir: Path, tmp_path: Path):
     target = tmp_path / "exec.sh"
     target.write_bytes(b"#!/bin/sh\necho hi\n")

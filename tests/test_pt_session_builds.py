@@ -5,7 +5,20 @@ The fix removed the invalid `s-enter` token; we keep this test to make
 sure no future change re-introduces an invalid key name."""
 from __future__ import annotations
 
+import sys
+
 import pytest
+
+# prompt_toolkit's session builder probes the host terminal at construction
+# time. GitHub-hosted Windows runners advertise ``TERM=xterm-256color`` but
+# don't expose a Win32 console screen buffer; ``Vt100_Output`` then refuses
+# to set up cursor handling and raises ``NoConsoleScreenBufferError``. The
+# behaviour we care about (no ValueError on key-binding names) is identical
+# on every OS, so skip the runtime build on Windows CI.
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="prompt_toolkit session-build needs a real Win32 console buffer; GitHub Windows runner provides only a Vt100 stream.",
+)
 
 
 def test_session_builder_does_not_raise():
