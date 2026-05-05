@@ -93,7 +93,8 @@ class SubscriptionStore:
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         body = {"subscriptions": [asdict(s) for s in self._subs.values()]}
-        self.path.write_text(json.dumps(body, indent=2, sort_keys=True))
+        out = json.dumps(body, indent=2, sort_keys=True)
+        self.path.write_text(out, encoding="utf-8")
         try:
             os.chmod(self.path, 0o600)
         except OSError:

@@ -54,10 +54,13 @@ class TestBuildReport:
             assert isinstance(b["tier"], int)
             assert isinstance(b["available"], bool)
 
-    def test_backends_includes_all_four(self):
+    def test_backends_includes_all_known_tiers(self):
         rep = build_report()
         names = {b["name"] for b in rep["backends"]}
-        assert names == {"bwrap", "firejail", "unshare", "docker"}
+        # The 4 isolating backends remain mandatory; the v1.0 Windows
+        # passthrough backend joins as the 5th, last-resort tier.
+        assert {"bwrap", "firejail", "unshare", "docker"}.issubset(names)
+        assert "passthrough" in names
 
     def test_selected_is_a_known_name_or_none(self):
         rep = build_report()

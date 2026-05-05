@@ -42,6 +42,7 @@ ALLOWED = {
     PHANTOM_DIR / "sandbox" / "backends" / "firejail.py",
     PHANTOM_DIR / "sandbox" / "backends" / "unshare.py",
     PHANTOM_DIR / "sandbox" / "backends" / "docker.py",
+    PHANTOM_DIR / "sandbox" / "backends" / "passthrough.py",  # Windows fallback (v1.0)
     # MCP stdio transport spawns a child MCP server. The child is
     # operator-chosen trusted code; ADR-0003 explicitly sanctions this
     # path. The transport module's docstring carries the full rationale.

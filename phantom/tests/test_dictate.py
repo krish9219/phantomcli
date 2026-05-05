@@ -61,3 +61,42 @@ def test_openai_backend_requires_api_key(tmp_path: Path, monkeypatch: pytest.Mon
 def test_discover_recorder_returns_tuple_or_none():
     rec = discover_recorder()
     assert rec is None or (isinstance(rec, tuple) and len(rec) == 2)
+
+
+def test_record_falls_back_to_sounddevice_when_no_cli_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """When sox/arecord/parecord are absent, record_to_wav must invoke
+    the sounddevice Python backend rather than failing immediately.
+    Useful especially on Windows."""
+    from phantom.voice import dictate as d
+
+    monkeypatch.setattr(d, "discover_recorder", lambda: None)
+
+    called = {"yes": False}
+
+    def fake_sd(seconds, out_path):
+        called["yes"] = True
+        out_path.write_bytes(b"fake-wav")
+        return out_path
+
+    monkeypatch.setattr(d, "_record_via_sounddevice", fake_sd)
+    out = d.record_to_wav(1.0, out_path=tmp_path / "x.wav")
+    assert called["yes"] is True
+    assert out.exists()
+
+
+def test_sounddevice_fallback_emits_clear_error_when_lib_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """If sounddevice itself isn't installed, the error must guide install."""
+    from phantom.voice import dictate as d
+    import builtins as _builtins
+    real = _builtins.__import__
+
+    def block(name, *a, **kw):
+        if name == "sounddevice":
+            raise ImportError("no sounddevice")
+        return real(name, *a, **kw)
+
+    monkeypatch.setattr(_builtins, "__import__", block)
+    monkeypatch.setattr(d, "discover_recorder", lambda: None)
+
+    with pytest.raises(d.DictateBackendError, match="install one of"):
+        d.record_to_wav(1.0, out_path=tmp_path / "x.wav")

@@ -102,7 +102,8 @@ class MirrorStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self.bundles_dir.mkdir(exist_ok=True)
         if not self.index_path.exists():
-            self.index_path.write_text(json.dumps({"plugins": []}, indent=2))
+            empty = json.dumps({"plugins": []}, indent=2)
+            self.index_path.write_text(empty, encoding="utf-8")
 
     def load_index(self) -> dict:
         if not self.index_path.exists():
@@ -143,7 +144,8 @@ class MirrorStore:
             entry["signature"] = signature_b64
         plugins.append(entry)
         index["plugins"] = sorted(plugins, key=lambda p: (p["name"], p["version"]))
-        self.index_path.write_text(json.dumps(index, indent=2, sort_keys=True))
+        body = json.dumps(index, indent=2, sort_keys=True)
+        self.index_path.write_text(body, encoding="utf-8")
         return entry
 
     def publish(

@@ -71,28 +71,76 @@ _RECORDER_CMDS: list[tuple[str, list[str]]] = [
 
 
 def discover_recorder() -> Optional[tuple[str, list[str]]]:
-    """Return the first available recorder + its argv template."""
+    """Return the first available command-line recorder + its argv template.
+
+    Order: sox (cross-platform), arecord (Linux ALSA), parecord (Linux PulseAudio).
+    Returns ``None`` if no command-line recorder is on PATH; the caller
+    falls back to the Python ``sounddevice`` backend (Windows + cross-platform).
+    """
     for name, argv in _RECORDER_CMDS:
         if shutil.which(name):
             return name, argv
     return None
 
 
-def record_to_wav(seconds: float, *, out_path: Optional[Path] = None) -> Path:
-    """Record `seconds` of mono 16k WAV. Returns path."""
-    rec = discover_recorder()
-    if rec is None:
+def _record_via_sounddevice(seconds: float, out_path: Path) -> Path:
+    """Pure-Python recorder. Works on Windows / macOS / Linux when the
+    user has installed the optional ``sounddevice`` package + libportaudio.
+
+    The Linux command-line recorders are preferred (no extra deps). This
+    backend is the cross-platform fallback — particularly important on
+    Windows, where neither ``sox`` nor ``arecord`` ship by default.
+    """
+    try:
+        import sounddevice as sd
+        import wave
+    except ImportError as e:
         raise DictateBackendError(
-            "no audio recorder found (need sox, arecord, or parecord on PATH)"
-        )
-    name, template = rec
+            "no audio recorder found. install one of:\n"
+            "  • sox (Linux/macOS):    apt install sox  /  brew install sox\n"
+            "  • arecord (Linux):      apt install alsa-utils\n"
+            "  • parecord (Linux):     apt install pulseaudio-utils\n"
+            "  • sounddevice (any OS): pip install sounddevice"
+        ) from e
+
+    sample_rate = 16000
+    n_frames = int(max(1, seconds) * sample_rate)
+    log.debug("recording with sounddevice: %d frames @ %d Hz", n_frames, sample_rate)
+    try:
+        recording = sd.rec(n_frames, samplerate=sample_rate, channels=1, dtype="int16")
+        sd.wait()
+    except Exception as e:
+        raise DictateBackendError(f"sounddevice recording failed: {e}") from e
+
+    with wave.open(str(out_path), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)        # 16-bit
+        wf.setframerate(sample_rate)
+        wf.writeframes(recording.tobytes())
+    return out_path
+
+
+def record_to_wav(seconds: float, *, out_path: Optional[Path] = None) -> Path:
+    """Record `seconds` of mono 16 kHz WAV. Returns the file path.
+
+    Tries command-line recorders first (cheaper, no Python deps), falls
+    back to the ``sounddevice`` Python backend on Windows or wherever
+    the CLI tools aren't available.
+    """
     out = out_path or Path(tempfile.mkstemp(suffix=".wav", prefix="phantom-dictate-")[1])
-    argv = [arg.format(out=str(out), secs=str(int(max(1, seconds)))) for arg in template]
-    log.debug("recording with %s: %s", name, argv)
-    proc = subprocess.run(argv, capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise DictateBackendError(f"{name} failed: {proc.stderr.strip()}")
-    return out
+    rec = discover_recorder()
+
+    if rec is not None:
+        name, template = rec
+        argv = [arg.format(out=str(out), secs=str(int(max(1, seconds)))) for arg in template]
+        log.debug("recording with %s: %s", name, argv)
+        proc = subprocess.run(argv, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise DictateBackendError(f"{name} failed: {proc.stderr.strip()}")
+        return out
+
+    # No CLI recorder on PATH — fall back to sounddevice (Python lib).
+    return _record_via_sounddevice(seconds, out)
 
 
 # ─── transcription backends ───────────────────────────────────────────────────

@@ -106,7 +106,8 @@ class ProviderRegistry:
 
     def _save(self) -> None:
         body: dict[str, Any] = {"custom": {p.name: _provider_to_dict(p) for p in self.list()}}
-        self.path.write_text(json.dumps(body, indent=2, sort_keys=True))
+        out = json.dumps(body, indent=2, sort_keys=True)
+        self.path.write_text(out, encoding="utf-8")
         try:
             os.chmod(self.path, 0o600)
         except OSError:

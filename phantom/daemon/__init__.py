@@ -32,13 +32,21 @@ from phantom.daemon.protocol import (
     encode_request,
     encode_response,
 )
+from phantom.daemon.transport import (
+    Endpoint,
+    default_endpoint,
+    is_windows,
+)
 
 __all__ = [
     "DEFAULT_SOCKET_PATH",
     "DaemonRequest",
     "DaemonResponse",
+    "Endpoint",
     "decode_request",
     "decode_response",
+    "default_endpoint",
     "encode_request",
     "encode_response",
+    "is_windows",
 ]

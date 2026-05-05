@@ -15,6 +15,7 @@ from phantom.sandbox._backend import SandboxBackend
 from phantom.sandbox.backends.bwrap import BwrapBackend
 from phantom.sandbox.backends.docker import DockerBackend
 from phantom.sandbox.backends.firejail import FirejailBackend
+from phantom.sandbox.backends.passthrough import PassthroughBackend
 from phantom.sandbox.backends.unshare import UnshareBackend
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "BwrapBackend",
     "DockerBackend",
     "FirejailBackend",
+    "PassthroughBackend",
     "SandboxBackend",
     "UnshareBackend",
     "all_backends",
@@ -40,6 +42,7 @@ def all_backends() -> list[SandboxBackend]:
             FirejailBackend(),
             UnshareBackend(),
             DockerBackend(),
+            PassthroughBackend(),  # rank 99 — last-resort fallback for Windows
         ),
         key=lambda b: b.tier_rank,
     )

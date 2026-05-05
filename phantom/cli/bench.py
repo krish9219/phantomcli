@@ -51,19 +51,30 @@ class BenchResult:
 
 
 def _current_rss_mb() -> float:
+    # Linux: /proc/self/status (UTF-8 ASCII)
     try:
-        with open("/proc/self/status", "r") as f:
+        with open("/proc/self/status", "r", encoding="utf-8") as f:
             for line in f:
                 if line.startswith("VmRSS:"):
                     kb = int(line.split()[1])
                     return round(kb / 1024.0, 2)
     except FileNotFoundError:
-        # macOS fallback via resource
+        pass
+    # macOS / Windows fallback via the resource module (POSIX) or
+    # psutil (Windows). We avoid hard-depending on psutil.
+    try:
         import resource
         ru = resource.getrusage(resource.RUSAGE_SELF)
-        # macOS reports bytes, Linux reports KiB; we hit the FileNotFoundError
-        # branch on macOS, so assume bytes here.
+        # macOS: bytes; Linux: KiB. We're in the not-Linux branch so
+        # assume bytes here.
         return round(ru.ru_maxrss / (1024.0 * 1024.0), 2)
+    except ImportError:
+        # Windows: no `resource` module. Try psutil if installed.
+        try:
+            import psutil  # noqa: F401
+            return round(psutil.Process().memory_info().rss / (1024 * 1024), 2)
+        except ImportError:
+            return 0.0
     return 0.0
 
 

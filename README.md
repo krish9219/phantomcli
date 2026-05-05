@@ -31,25 +31,67 @@ Phantom is the AI assistant that **runs on your machine, talks to any model, edi
 
 ## Quick start
 
+### Linux / macOS
+
 ```bash
-# install
 pip install phantom-cli
 
-# or from source
-git clone https://github.com/krish9219/phantomcli
-cd phantom && pip install -e .
-
-# point it at any OpenAI-compatible provider in one command
+# point at any OpenAI-compatible provider
 phantom config provider preset together
 export TOGETHER_API_KEY=...
-
-# chat
-phantom
-
-# or skip into the daemon path for sub-50ms restarts
-phantom serve &
-phantom connect ping
+phantom                                    # chat REPL
 ```
+
+### Windows (PowerShell)
+
+```powershell
+pip install phantom-cli
+
+phantom config provider preset together
+$env:TOGETHER_API_KEY = "..."
+phantom                                    # chat REPL
+```
+
+### From source (any OS)
+
+```bash
+git clone https://github.com/krish9219/phantomcli
+cd phantomcli
+pip install -e .
+phantom version
+```
+
+### Daemon mode (sub-1ms warm round-trips)
+
+```bash
+phantom serve &           # POSIX: backgrounds via shell.  Windows: open another shell.
+phantom connect ping      # 0.6 ms on Linux/macOS, ~1 ms on Windows over TCP loopback.
+```
+
+---
+
+## Platform support
+
+| Feature | Linux | macOS | Windows |
+|---|:---:|:---:|:---:|
+| REPL / chat / agent loop | ✅ | ✅ | ✅ |
+| MCP client + server | ✅ | ✅ | ✅ |
+| Edit transactions + WAL | ✅ | ✅ | ✅ |
+| AST refactor (Python + JS/TS) | ✅ | ✅ | ✅ |
+| Cross-harness importer | ✅ | ✅ | ✅ |
+| Plugin mirror (server + client) | ✅ | ✅ | ✅ |
+| Browser tool (Playwright) | ✅ | ✅ | ✅ |
+| Swarm + self-dev | ✅ | ✅ | ✅ |
+| Daemon (Unix sockets) | ✅ | ✅ | ⚪ TCP loopback |
+| Voice dictate | ✅ sox/arecord | ✅ sox | ✅ sounddevice |
+| **Sandbox isolation** | ✅ bwrap/firejail/unshare/docker | ⚪ docker only | ⚪ **passthrough**¹ |
+| TUI rich rendering | ✅ | ✅ | ✅ |
+| PWA dashboard | ✅ | ✅ | ✅ |
+
+¹ **Windows sandbox is passthrough (no isolation) in v1.0.** A loud
+warning is logged the first time it's used. **Real Windows isolation
+(AppContainer / Hyper-V) lands in v1.2.** Until then, do not enable
+Trust Level 4 (God Mode) on Windows. See [docs/adr/0007-windows-sandbox.md](docs/adr/0007-windows-sandbox.md).
 
 ---
 

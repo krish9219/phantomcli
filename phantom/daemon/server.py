@@ -1,22 +1,20 @@
 """Phantom daemon server — long-lived backend.
 
-Listens on a unix socket. Each accepted connection is one client request
-followed by one response, then close. The expensive imports
-(model SDKs, FastAPI, sandbox) happen once at server start; subsequent
-``phantom connect`` round-trips are cheap.
+Listens on a unix socket on POSIX or a TCP loopback port on Windows.
+Each accepted connection is one client request followed by one
+response, then close. The expensive imports happen once at server
+start; subsequent ``phantom connect`` round-trips are cheap.
 
 Built-in operations
 -------------------
 
 * ``ping``        — liveness; returns the daemon's pid + uptime.
-* ``version``     — returns ``__version__`` so the client can refuse to
-                    talk to a stale daemon after an upgrade.
-* ``echo``        — returns ``payload.text`` verbatim. Used by tests.
+* ``version``     — returns ``__version__`` so the client can refuse
+                    to talk to a stale daemon after an upgrade.
+* ``echo``        — returns ``payload.text`` verbatim.
 * ``shutdown``    — graceful stop.
 
-Operators register custom ops via :func:`register_op`. The chat agent
-loop is wired in by :func:`build_default_server` once the engine is
-ready (Stage 4+); the protocol is stable today regardless.
+Operators register custom ops via :func:`register_op`.
 """
 
 from __future__ import annotations
@@ -27,8 +25,7 @@ import os
 import socket
 import threading
 import time
-from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
 from phantom._version import __version__
 from phantom.daemon.protocol import (
@@ -37,6 +34,14 @@ from phantom.daemon.protocol import (
     DaemonResponse,
     decode_request,
     encode_response,
+)
+from phantom.daemon.transport import (
+    Endpoint,
+    default_endpoint,
+    is_windows,
+    make_client_socket,
+    make_listener_socket,
+    remove_endpoint_artifacts,
 )
 
 __all__ = ["DaemonServer", "build_default_server", "register_op"]
@@ -67,7 +72,8 @@ _START_TIME = time.monotonic()
 
 
 def _op_ping(_: dict) -> dict:
-    return {"pid": os.getpid(), "uptime_s": round(time.monotonic() - _START_TIME, 3)}
+    pid = os.getpid()
+    return {"pid": pid, "uptime_s": round(time.monotonic() - _START_TIME, 3)}
 
 
 def _op_version(_: dict) -> dict:
@@ -87,36 +93,44 @@ register_op("echo", _op_echo)
 
 
 class DaemonServer:
-    """Tiny per-line JSON server over a unix socket.
+    """Tiny per-line JSON server.
 
-    Single-threaded by default — each connection is handled in a daemon
-    thread but op handlers run sequentially per connection. Set
-    ``parallel=True`` to dispatch each connection in its own thread for
-    long-running ops like agent turns.
+    POSIX: AF_UNIX. Windows: AF_INET on 127.0.0.1. Wire format
+    identical. Single-threaded by default; pass ``parallel=True`` to
+    dispatch each connection in its own thread.
+
+    Backwards-compatible API: ``socket_path`` still works. Pass
+    ``endpoint=`` for explicit transport control.
     """
 
     def __init__(
         self,
-        socket_path: str = DEFAULT_SOCKET_PATH,
+        socket_path: Optional[str] = None,
         *,
+        endpoint: Optional[Endpoint] = None,
         parallel: bool = False,
     ) -> None:
-        self.socket_path = socket_path
+        if endpoint is not None:
+            self.endpoint = endpoint
+        elif socket_path is not None and socket_path != DEFAULT_SOCKET_PATH:
+            # Operator-supplied socket path. Wrap in unix endpoint on
+            # POSIX. On Windows, treat as a tcp host:port if it looks
+            # like one, otherwise still a unix path (Win10+ has AF_UNIX).
+            self.endpoint = (default_endpoint(override=socket_path)
+                             if (":" in socket_path and not socket_path.startswith("/"))
+                             else Endpoint(family="unix", path=socket_path))
+        else:
+            self.endpoint = default_endpoint()
+        # Backwards-compat alias for legacy code that reads .socket_path.
+        self.socket_path = self.endpoint.path
         self.parallel = parallel
         self._sock: socket.socket | None = None
         self._stop = threading.Event()
 
     def start(self) -> None:
         """Bind, listen, and serve forever (until ``stop``)."""
-        sp = Path(self.socket_path)
-        if sp.exists():
-            sp.unlink()
-        sp.parent.mkdir(parents=True, exist_ok=True)
-        self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self._sock.bind(self.socket_path)
-        self._sock.listen(64)
-        os.chmod(self.socket_path, 0o600)
-        log.info("phantom daemon listening on %s", self.socket_path)
+        self._sock = make_listener_socket(self.endpoint)
+        log.info("phantom daemon listening on %s", self.endpoint.display())
         try:
             self._accept_loop()
         finally:
@@ -124,17 +138,14 @@ class DaemonServer:
                 self._sock.close()
             except Exception:
                 pass
-            try:
-                Path(self.socket_path).unlink(missing_ok=True)
-            except Exception:
-                pass
+            remove_endpoint_artifacts(self.endpoint)
 
     def stop(self) -> None:
         self._stop.set()
-        # nudge accept() awake by opening + closing a connection
+        # Nudge accept() awake by opening + closing a connection.
         try:
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-                s.connect(self.socket_path)
+            sock = make_client_socket(self.endpoint, timeout_s=1.0)
+            sock.close()
         except Exception:
             pass
 
@@ -190,6 +201,14 @@ class DaemonServer:
             return DaemonResponse(False, error=f"{type(e).__name__}: {e}")
 
 
-def build_default_server(socket_path: str = DEFAULT_SOCKET_PATH) -> DaemonServer:
-    """Construct a server with all default ops wired up."""
-    return DaemonServer(socket_path=socket_path, parallel=True)
+def build_default_server(
+    socket_path: Optional[str] = None,
+    *,
+    endpoint: Optional[Endpoint] = None,
+) -> DaemonServer:
+    """Construct a server with all default ops wired up.
+
+    With no arguments, picks the OS-appropriate endpoint
+    (Unix socket on POSIX, TCP loopback on Windows).
+    """
+    return DaemonServer(socket_path=socket_path, endpoint=endpoint, parallel=True)

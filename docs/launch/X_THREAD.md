@@ -1,12 +1,12 @@
 # X / Twitter launch thread
 
-A 10-tweet thread for launch day. Replace `[link]` with the GitHub repo URL on send.
+A 10-tweet thread for launch day. Replace `https://github.com/krish9219/phantomcli` with the GitHub repo URL on send.
 
 ---
 
 **1/** Phantom v1.0 is out. Open-source AI coding agent with a real sandbox, atomic edits, AST-aware refactor, signed plugin mirror, and a daemon mode that beats Go/Rust harnesses on warm-path latency.
 
-MIT core. Hosted Pro tier sells multi-key pool + mirror. Single dev. → [link]
+Linux + macOS + Windows. MIT core. Single dev. → https://github.com/krish9219/phantomcli
 
 ---
 
