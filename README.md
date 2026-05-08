@@ -7,13 +7,13 @@
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![release](https://img.shields.io/github/v/release/krish9219/phantomcli?label=release&color=purple)](https://github.com/krish9219/phantomcli/releases/latest)
 
-Phantom is the AI assistant that **runs on your machine, talks to any model, edits your code safely, and reaches you wherever you are**. The MIT-licensed core gives you the entire CLI, sandbox, plugin system, and dashboard. The Pro tier adds production conveniences (multi-key API pool, hosted plugin mirror, advanced multi-agent orchestration, priority support).
+Phantom is the AI assistant that **runs on your machine, talks to any model, edits your code safely, and reaches you wherever you are**. The Free tier gives you `chat`, plugins, memory, MCP, benchmarks, doctor, and the Ed25519-signed plugin mirror — forever, no card needed. The **Pro tier (₹999 lifetime, up to 3 devices)** unlocks `phantom serve` (daemon, sub-50 ms warm round-trip), `phantom swarm` (parallel subagent runner), `phantom dictate` (voice → Whisper), and `phantom self-dev` (sandboxed self-improvement). Every fresh install gets a 14-day full-Pro trial; pre-v1.1 installs are grandfathered.
 
 ---
 
 ## Why Phantom
 
-| | Phantom v1.0 | Claude Code | OpenCode | OpenClaw | Auto-GPT |
+| | Phantom v1.1 | Claude Code | OpenCode | OpenClaw | Auto-GPT |
 |---|---|---|---|---|---|
 | Sandboxed shell | **4-tier + bwrap/firejail/unshare/docker** | permission prompts | Plan mode | broad permissions | docker |
 | Cross-harness import | **claude-code, codex, opencode** | — | — | — | — |
@@ -88,7 +88,7 @@ phantom connect ping      # 0.6 ms on Linux/macOS, ~1 ms on Windows over TCP loo
 | TUI rich rendering | ✅ | ✅ | ✅ |
 | PWA dashboard | ✅ | ✅ | ✅ |
 
-¹ **Windows sandbox is passthrough (no isolation) in v1.0.** A loud
+¹ **Windows sandbox is passthrough (no isolation) in v1.1.** A loud
 warning is logged the first time it's used. **Real Windows isolation
 (AppContainer / Hyper-V) lands in v1.2.** Until then, do not enable
 Trust Level 4 (God Mode) on Windows. See [docs/adr/0007-windows-sandbox.md](docs/adr/0007-windows-sandbox.md).
@@ -259,7 +259,7 @@ deploy/
 
 `phantom bench` (run on your machine):
 
-| | Phantom v1.0 | jcode (Rust) | Claude Code | OpenCode (Go) |
+| | Phantom v1.1 | jcode (Rust) | Claude Code | OpenCode (Go) |
 |---|---|---|---|---|
 | Cold start | 268 ms (binary) | 14 ms | ~50 ms | ~14 ms |
 | Daemon warm round-trip | **0.6 ms** | — | — | — |
