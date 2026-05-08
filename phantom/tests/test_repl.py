@@ -105,6 +105,25 @@ def test_pro_gate_inside_repl_does_not_kill_loop(isolated_home, monkeypatch, cap
     assert "Pro feature" in err or "Phantom Pro" in err
 
 
+def test_subgroup_help_does_not_print_empty_error(isolated_home, monkeypatch, capsys):
+    """Regression: typing a sub-group name (e.g. `config`) prints help via
+    no_args_is_help. In click 8+, this raises click.exceptions.Exit which is
+    a RuntimeError, not a SystemExit. Old code fell through to the generic
+    Exception branch and printed `error:` with no message."""
+    out, err = _run_repl_with_input(monkeypatch, capsys, ["config", "version", "exit"])
+    assert "error:" not in err.split("\n")  # no bare "error:" line
+    assert "(help failed" not in err
+    from phantom._version import __version__
+    assert __version__ in out  # subsequent dispatch still works
+
+
+def test_unknown_command_prints_clean_message(isolated_home, monkeypatch, capsys):
+    """`No such command 'foo'.` should be printed once, not as `error: <ctx>`."""
+    out, err = _run_repl_with_input(monkeypatch, capsys, ["definitely_not_real", "version", "exit"])
+    assert "No such command" in err
+    assert err.count("No such command") == 1
+
+
 def test_repl_runs_when_no_subcommand_passed(isolated_home, monkeypatch, capsys):
     """`phantom` (no args) should call run_repl(); we monkeypatch to verify."""
     called = {"v": False}

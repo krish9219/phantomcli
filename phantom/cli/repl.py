@@ -45,32 +45,52 @@ def _banner(license_tier: str, license_detail: str, version: str) -> str:
     )
 
 
+def _click_exits():
+    """Return the click exception classes that mean "command finished, no error".
+
+    In click 8+ ``Exit`` and ``Abort`` are RuntimeError subclasses, not
+    SystemExit, so a plain ``except SystemExit`` doesn't catch them.
+    """
+    from click.exceptions import Abort, Exit
+    return (Exit, Abort)
+
+def _click_usage_error():
+    from click.exceptions import UsageError
+    return UsageError
+
+
 def _show_help(app) -> None:
     """Invoke `phantom --help` style listing without exiting the loop."""
     from typer.main import get_command
     cmd = get_command(app)
     try:
         cmd(args=["--help"], standalone_mode=False)
-    except SystemExit:
+    except (SystemExit, *_click_exits()):
         pass
     except Exception as e:
-        print(f"(help failed: {e})", file=sys.stderr)
+        msg = str(e).strip()
+        if msg:
+            print(f"(help failed: {msg})", file=sys.stderr)
 
 
 def _dispatch(app, argv: list[str]) -> None:
-    """Run a single subcommand without letting SystemExit kill the REPL."""
+    """Run a single subcommand without letting SystemExit / click.Exit kill the REPL."""
     from typer.main import get_command
     cmd = get_command(app)
     try:
         cmd(args=argv, standalone_mode=False)
-    except SystemExit:
-        # Typer/click raise SystemExit for both --help and command errors.
-        # Swallow so the REPL stays alive.
+    except (SystemExit, *_click_exits()):
+        # --help, no_args_is_help, and clean command exits all raise here.
         pass
     except KeyboardInterrupt:
         print("(interrupted)", file=sys.stderr)
+    except _click_usage_error() as e:
+        # "No such command", "Missing argument", etc. — pretty-print, stay alive.
+        print(e.format_message(), file=sys.stderr)
     except Exception as e:
-        print(f"error: {e}", file=sys.stderr)
+        msg = str(e).strip()
+        if msg:
+            print(f"error: {msg}", file=sys.stderr)
 
 
 def _make_prompt(history_file: Path):
