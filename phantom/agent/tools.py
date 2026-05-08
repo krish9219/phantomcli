@@ -167,11 +167,14 @@ def default_tools(
             name="write_file",
             description=(
                 "Create or overwrite a UTF-8 text file at 'path' with 'text'. "
-                "Parent directories are created as needed. Use this for "
-                "writing source code, configs, or data files — DO NOT use "
-                "run_bash with heredocs / echo for file creation, as quoting "
-                "errors corrupt the file. Path must be inside the session "
-                "workdir."
+                "Parent directories are created as needed. Use this ONLY for "
+                "(a) creating a new file that doesn't exist yet, or (b) "
+                "rewriting more than ~80% of an existing one. For bug fixes "
+                "and small modifications to existing files, use edit_file "
+                "instead — it preserves untouched code and avoids the "
+                "whole-file-rewrite hallucination class. Never use run_bash "
+                "with heredocs / echo for file creation, as quoting errors "
+                "corrupt the file. Path must be inside the session workdir."
             ),
             input_schema={
                 "type": "object",
@@ -209,11 +212,16 @@ def default_tools(
         ToolDefinition(
             name="edit_file",
             description=(
-                "Replace exactly one occurrence of 'old_string' with "
-                "'new_string' in a file. Fails if old_string is missing or "
-                "non-unique unless replace_all=true. Prefer this over "
-                "write_file for small in-place changes — it sends only the "
-                "diff so the model is less likely to hallucinate."
+                "Surgical, exact-string edit on an existing file. Replaces "
+                "one occurrence of 'old_string' with 'new_string' (or all "
+                "occurrences with replace_all=true). Fails if old_string "
+                "isn't present, or if it appears more than once and "
+                "replace_all is false — in that case extend old_string with "
+                "more surrounding context to make it unique.\n\n"
+                "ALWAYS prefer this over write_file when modifying existing "
+                "files. A one-line bug fix is one edit_file call — not a "
+                "write_file rewrite of the whole module. Whole-file "
+                "rewrites silently corrupt untouched code and waste tokens."
             ),
             input_schema={
                 "type": "object",

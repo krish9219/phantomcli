@@ -13,6 +13,61 @@ The major version cadence:
 
 ---
 
+## [1.0.2] — 2026-05-08 — CI matrix green + surgical-fix system prompt
+
+Patch release. CI now passes 100% across Linux/macOS/Windows × Python
+3.11/3.12/3.13 (was failing on macOS daemon E2E and across Windows
+before). Also wires Phantom's surgical-fix editing philosophy into the
+default system prompt so out-of-the-box bug fixes are targeted
+`edit_file` calls, not whole-file rewrites — matching how Claude Code,
+Cursor, and Aider all behave.
+
+### Fixed
+
+* **Windows binary build** (`phantomcli.spec`): `strip=False`. PyInstaller
+  was invoking GNU `strip` (the only one on hosted Windows runners, via
+  MinGW) on the bundled `python312.dll`, corrupting the PE so the binary
+  died at launch with `Failed to load Python DLL`. Disabling strip costs
+  negligible size on POSIX and unblocks the Windows binary entirely.
+* **SandboxPolicy path comparison on Windows**
+  (`phantom/sandbox/policy.py`): the validator's "workdir is inside
+  writable_paths" check hard-coded forward slashes, rejecting legitimate
+  Windows policies (`D:\tmp\job\sub` ⊂ `D:\tmp\job`, `D:\` as root mount,
+  trailing-backslash normalisation). Switched to `os.path.normpath` and
+  `dirname(p) == p` for portable root detection.
+* **Docker backend probe**
+  (`phantom/sandbox/backends/docker.py`): now requires `OSType=linux`
+  from `docker info`. Hosted Windows runners ship Docker Desktop in
+  Windows-container mode by default, which rejects our `--read-only`
+  flag. WSL2-backed Docker on Windows still works.
+
+### Added
+
+* **Surgical-fix default system prompt** (`phantom/agent/session.py`):
+  `DEFAULT_SYSTEM_PROMPT` now teaches the model to read the failing
+  code first, find the root cause, and apply the *minimum* change via
+  `edit_file` rather than rewriting the whole file with `write_file`.
+  Custom callers can still pass their own `system_prompt` to override.
+* **Tightened tool descriptions** (`phantom/agent/tools.py`): `edit_file`
+  is described as the always-preferred surgical edit primitive;
+  `write_file` is reserved for new files / >80% rewrites.
+
+### CI / test infra
+
+* macOS daemon E2E tests now use a short `/tmp`-anchored socket path
+  (AF_UNIX 104-byte limit was tripped by pytest's `tmp_path` under
+  `/private/var/folders/...`).
+* `tests/sandbox/test_policy.py` and `test_audit.py` use
+  `os.path.abspath`-built constants so POSIX-style hard-coded paths
+  work on Windows too.
+* The bash-via-MCP smoke test, the AF_UNIX-only daemon E2E suite, and
+  the "select_backend returns a real backend" assertion are
+  Windows-skipped with explicit reason strings.
+* Windows binary cold-start budget relaxed from 2 s → 5 s (NTFS access
+  + Defender first-touch overhead).
+
+---
+
 ## [1.0.1] — 2026-05-05 — Windows support
 
 First public release with Windows runtime support.

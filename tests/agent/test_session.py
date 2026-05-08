@@ -288,3 +288,42 @@ class TestProviderErrorWrapping:
         session = AgentSession(provider=_Boom())
         with pytest.raises(PhantomError, match="provider call failed"):
             session.respond_to("hi")
+
+
+# ─── Default system prompt teaches surgical-fix behaviour ───────────────────
+
+
+class TestDefaultSystemPrompt:
+    """The default system prompt is the contract Phantom makes with every
+    model it talks to. If this regresses, the model stops preferring
+    edit_file over write_file and bug fixes turn into whole-file
+    rewrites — exactly what users complain about with weaker agents."""
+
+    def test_default_prompt_mentions_edit_file_preference(self):
+        from phantom.agent.session import DEFAULT_SYSTEM_PROMPT
+        assert "edit_file" in DEFAULT_SYSTEM_PROMPT
+        assert "write_file" in DEFAULT_SYSTEM_PROMPT
+        # Surgical-fix philosophy keywords.
+        assert "minimum change" in DEFAULT_SYSTEM_PROMPT.lower()
+        assert "root cause" in DEFAULT_SYSTEM_PROMPT.lower()
+
+    def test_session_uses_default_prompt_when_unspecified(self):
+        from phantom.agent.session import DEFAULT_SYSTEM_PROMPT
+
+        class _Stub:
+            name = "stub"
+            def complete(self, msgs, *, tools):
+                return ProviderResponse(text="ok", tool_calls=())
+
+        session = AgentSession(provider=_Stub())
+        assert session.system_prompt == DEFAULT_SYSTEM_PROMPT
+
+    def test_session_system_prompt_overridable(self):
+        class _Stub:
+            name = "stub"
+            def complete(self, msgs, *, tools):
+                return ProviderResponse(text="ok", tool_calls=())
+
+        custom = "You are a code reviewer."
+        session = AgentSession(provider=_Stub(), system_prompt=custom)
+        assert session.system_prompt == custom
