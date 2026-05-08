@@ -13,6 +13,30 @@ The major version cadence:
 
 ---
 
+## [1.1.2] — 2026-05-08 — REPL: clean exits + pretty usage errors
+
+Patch release. Cosmetic but visible REPL polish.
+
+### Fixed
+
+* In click 8+, `click.exceptions.Exit` and `Abort` are `RuntimeError`
+  subclasses, not `SystemExit`. The REPL's `except SystemExit` missed
+  them, so typing a sub-group name like `config` (which triggers
+  `no_args_is_help` → `click.Exit(0)`) fell through to the generic
+  Exception branch and printed a bare `error:` line with no message.
+  Now we catch both `SystemExit` and click's exit classes silently,
+  pretty-print `UsageError` messages via `.format_message()` (so
+  `No such command 'foo'.` appears clean), and only emit `error: <msg>`
+  when there's actually a message.
+
+### Tests
+
+* 2 new regression tests: `config` sub-group help no longer leaves a
+  spurious `error:` line; unknown-command messages print exactly once.
+  Local suite: 2188 passed.
+
+---
+
 ## [1.1.1] — 2026-05-08 — Phantom shell (REPL) + installer shim fix
 
 Patch release. Two surface improvements on top of the v1.1.0 licensing
