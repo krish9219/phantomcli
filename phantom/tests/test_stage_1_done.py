@@ -178,7 +178,7 @@ def test_blocklist_blocks_rm_rf_root(tmp_path) -> None:
 def test_phantom_version_unchanged_through_stage_1() -> None:
     """Stage 1 does not bump the version. v4.0.0 ships at Stage 8."""
     import phantom
-    assert phantom.__version__ in {"4.0.0-dev", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5", "4.0.6", "4.0.7", "4.0.8", "4.0.9", "4.0.10", "1.0.0", "1.0.1"}
+    assert phantom.__version__ in {"4.0.0-dev", "4.0.0", "4.0.1", "4.0.2", "4.0.3", "4.0.4", "4.0.5", "4.0.6", "4.0.7", "4.0.8", "4.0.9", "4.0.10", "1.0.0", "1.0.1", "1.0.2"}
 
 
 @pytest.mark.stage1
