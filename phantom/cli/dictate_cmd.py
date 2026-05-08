@@ -19,6 +19,8 @@ def dictate_cmd(
     raw: bool = typer.Option(False, "--raw", help="print only the transcript"),
 ) -> None:
     """Record audio and print the transcript."""
+    from phantom.licensing import require_pro
+    require_pro("dictate")
     try:
         result = dictate(
             seconds=seconds,

@@ -455,6 +455,7 @@ def _plugin_disable(name: str = typer.Argument(..., help="Plugin name.")) -> Non
 
 from phantom.cli.bench import bench as _bench_impl
 from phantom.cli.dictate_cmd import dictate_cmd as _dictate_impl
+from phantom.cli.license_cmd import license_app as _license_app
 from phantom.cli.memory_cmd import memory_app as _memory_app
 from phantom.cli.mcp_import_cmd import mcp_import as _mcp_import_impl, mcp_import_dry as _mcp_import_dry_impl
 from phantom.cli.provider_cmd import config_app as _config_app
@@ -462,20 +463,23 @@ from phantom.cli.selfdev_cmd import selfdev_cmd as _selfdev_impl
 from phantom.cli.swarm_cmd import swarm_cmd as _swarm_impl
 
 app.command("bench", help="Run reproducible performance benchmarks.")(_bench_impl)
-app.command("dictate", help="Record audio and transcribe via Whisper.")(_dictate_impl)
-app.command("swarm", help="Fan out N subagents into isolated git worktrees.")(_swarm_impl)
-app.command("self-dev", help="Apply a change in a sandboxed worktree, run tests.")(_selfdev_impl)
+app.command("dictate", help="Record audio and transcribe via Whisper. [Pro]")(_dictate_impl)
+app.command("swarm", help="Fan out N subagents into isolated git worktrees. [Pro]")(_swarm_impl)
+app.command("self-dev", help="Apply a change in a sandboxed worktree, run tests. [Pro]")(_selfdev_impl)
+app.add_typer(_license_app, name="license")
 app.add_typer(_memory_app, name="memory")
 app.add_typer(_config_app, name="config")
 mcp_app.command("import", help="Import MCP server defs from Claude Code / Codex configs.")(_mcp_import_impl)
 mcp_app.command("import-dry", help="List candidate MCP configs without importing.")(_mcp_import_dry_impl)
 
 
-@app.command("serve", help="Start the long-lived Phantom daemon (sub-50ms perceived start).")
+@app.command("serve", help="Start the long-lived Phantom daemon (sub-50ms perceived start). [Pro]")
 def _serve_cmd(
     socket_path: Optional[str] = typer.Option(None, "--socket", help="override socket path"),
     foreground: bool = typer.Option(True, "--foreground/--detach", help="run in foreground (default) or fork"),
 ) -> None:
+    from phantom.licensing import require_pro
+    require_pro("serve")
     from phantom.daemon.server import build_default_server, DEFAULT_SOCKET_PATH
     sp = socket_path or DEFAULT_SOCKET_PATH
     typer.echo(f"phantom daemon starting on {sp}")

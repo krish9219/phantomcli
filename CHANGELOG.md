@@ -13,6 +13,70 @@ The major version cadence:
 
 ---
 
+## [1.1.0] — 2026-05-08 — Pro tier gating + 14-day trial + licensing backend
+
+Phantom now ships in two tiers. **Free** (chat, plugins, memory, MCP, bench,
+doctor, version) stays free for everyone, forever. **Pro** (daemon mode,
+swarm runner, voice dictation, sandboxed self-dev) is gated behind a
+₹999 lifetime licence covering up to 3 devices. Every new install gets a
+**14-day full-Pro trial** so users can feel the daemon's sub-50ms warm
+roundtrip and the swarm runner's parallel diff collection before deciding.
+Existing installs from before v1.1.0 are detected by mtime and
+**grandfathered as Pro forever** — no friction for early adopters.
+
+### Added
+
+* `phantom/licensing/` — client-side licensing module. Fernet-encrypted
+  cache at `~/.phantom/.license`, machine-bound via per-install seed +
+  HMAC(seed, MAC). Online validation against
+  `phantom.aravindlabs.tech/api/phantomcli/check-license` with 30-day
+  cache and 90-day offline grace, so the daemon hot path never depends
+  on network.
+* `phantom license activate / status / deactivate / devices` —
+  user-facing licence management. `activate` validates the key online
+  and registers this device; `status` prints Pro / trial / Free; `devices`
+  lists every registered machine; `deactivate` frees a slot.
+* `require_pro()` — CLI-boundary gate. Wraps `phantom serve`, `phantom
+  swarm`, `phantom dictate`, `phantom self-dev`. Free state prints an
+  upgrade banner and exits non-zero; trial state prints "N days
+  remaining" once and passes through; Pro state passes silently.
+* **Licensing backend** — new FastAPI service at
+  `127.0.0.1:6020` (proxied via Caddy). Endpoints: `POST
+  /api/payment/order`, `POST /api/payment/verify`, `POST
+  /api/payment/webhook`, `POST /api/license/resend`, `POST
+  /api/phantomcli/check-license`, `POST
+  /api/phantomcli/deactivate-device`, `GET /api/phantomcli/devices`.
+  Postgres-backed (`licenses`, `devices`, `payments`, `webhook_events`).
+  Razorpay HMAC verification on every paid path; idempotent on
+  `razorpay_payment_id` and `razorpay_event_id`. SMTP delivery of the
+  PHC key on payment success.
+
+### Changed
+
+* Buy page (`/buy.html`) wired to the new endpoints and PHC key format.
+  The web "activate" tab now displays the exact `phantom license
+  activate PHC-…` command rather than calling a server endpoint —
+  activation is a CLI-only operation.
+* Hero copy on `index.html` and `landing.html` now describes the Free vs
+  Pro split honestly, including the 14-day trial and grandfathering
+  policy. The FAQ "no Pro tier, no feature gating" line was removed
+  (it was true for v1.0.x but not for v1.1.0).
+* `install.ps1` and `install.sh` closing copy lists Free vs Pro commands
+  with `[Free]`/`[Pro]` tags, points at `phantom license activate`, and
+  reminds users about the 14-day trial.
+
+### Migration
+
+* Existing v1.0.x installs upgrading via `/update`: detected by file
+  mtime in `~/.phantom`. Grandfather marker is written on first run and
+  Pro stays unlocked forever. No user action required.
+* Fresh v1.1.0 installs: 14-day trial starts on first `phantom`
+  invocation. After 14 days, Pro features lock until a key is activated.
+* Legacy `omnicli/licensing.py` is unchanged but unused by the v1.1.x
+  CLI. The new `phantom/licensing/` module is the source of truth.
+
+---
+
 ## [1.0.2] — 2026-05-08 — CI matrix green + surgical-fix system prompt
 
 Patch release. CI now passes 100% across Linux/macOS/Windows × Python

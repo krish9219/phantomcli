@@ -31,6 +31,8 @@ def selfdev_cmd(
     json_output: bool = typer.Option(False, "--json"),
 ) -> None:
     """Apply a self-dev change in an isolated worktree, run tests, report."""
+    from phantom.licensing import require_pro
+    require_pro("self-dev")
     result = run_selfdev(
         description,
         editor_fn=_stub_editor,

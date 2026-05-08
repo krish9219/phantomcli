@@ -22,6 +22,8 @@ def swarm_cmd(
     json_output: bool = typer.Option(False, "--json", help="emit JSON result"),
 ) -> None:
     """Fan out N subagents into isolated git worktrees and collect diffs."""
+    from phantom.licensing import require_pro
+    require_pro("swarm")
     result = run_swarm(
         goal,
         n=n,
