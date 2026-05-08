@@ -148,36 +148,34 @@ Web manifest, installable PWA, service worker with stale-while-revalidate cache,
 
 ---
 
-## What's open vs. paid
+## What's free vs. paid
 
-### MIT core (free, this repo)
+### Free tier — `phantom` core (forever, no card needed)
 
-* CLI + REPL + chat
-* Sandbox (4 tiers + 4 backends)
-* Plugin SDK + loader + 8 first-party plugins
-* Memory v2 (FTS5 + hybrid retrieval)
-* MCP client + server
-* Channel framework + 5 production adapters (CLI, WebChat, Telegram, Discord, Slack, Matrix)
-* Daemon mode + bench
-* Cross-harness importers
-* Transactional edits + WAL
-* Python + JS/TS rename
-* Mermaid TUI + dashboard
-* PWA shell + service worker
-* Voice MVP (Whisper)
-* Browser tool
+* `phantom chat` — interactive REPL
+* `phantom plugin {list,enable,disable,install}` — manage plugins (8 first-party + plugin SDK)
+* `phantom memory *` — Memory v2 (FTS5 + hybrid retrieval)
+* `phantom mcp *` — MCP client + server + auto-import (Claude Code / Codex / OpenCode)
+* `phantom bench` — reproducible performance benchmarks
+* `phantom doctor` — host capability report
+* `phantom connect` — talk to a running daemon (one-shot client)
+* `phantom config *` — provider configuration
+* Sandbox (4 tiers + 4 backends), transactional edits + WAL, Python + JS/TS rename, Mermaid TUI + dashboard, PWA shell + service worker, channel framework + 5 production adapters, browser tool, cross-harness importers — all included.
 
-### Pro tier (paid via Razorpay, ₹999 lifetime per device, up to 3 devices)
+### Pro tier — `phantom` advanced (₹999 INR one-time, lifetime, up to 3 devices)
 
-* Multi-key API pool beyond 2 keys (free tier capped at 2)
-* Advanced multi-agent orchestration at scale
-* Priority support + SLA
-* Hosted plugin mirror with curated/audited bundles
-* Production web dashboard (multi-user, audit log shipping)
-* Enterprise channels (SAML, SSO, audit forwarding)
-* Compliance reports (SOC 2 / ISO 27001 / HIPAA scaffolding)
+* `phantom serve` — long-lived daemon (sub-50 ms warm round-trip)
+* `phantom swarm "<goal>" --agents N` — fan out N subagents into isolated git worktrees, collect diffs, flag conflicts
+* `phantom dictate` — voice → Whisper, optional barge-in
+* `phantom self-dev "<change>"` — sandboxed self-improvement: edit in a worktree, run tests, optional `--swap` if green
 
-License keys at [phantom.aravindlabs.tech](https://phantom.aravindlabs.tech).
+### How to buy / activate
+
+* Buy: [phantom.aravindlabs.tech/buy](https://phantom.aravindlabs.tech/buy) → Razorpay checkout → PHC key emailed instantly.
+* Activate: `phantom license activate PHC-XXXXXXXX-XXXXXXXX-XXXXXXXX` on each machine.
+* Check: `phantom license status`. List devices: `phantom license devices`. Free a slot: `phantom license deactivate`.
+* Trial: every fresh install gets 14 days of full Pro automatically. No credit card to start.
+* Grandfathering: installs from before v1.1.0 are detected by mtime and granted lifetime Pro automatically — no action required.
 
 ---
 
@@ -289,16 +287,17 @@ pytest -q
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Sole maintainer: Aravind ([@aravindlabs](https://github.com/aravindlabs)). PRs welcome on the open-source surface; the Pro tier (license server, hosted mirror) lives in a separate private repo.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Sole maintainer: Aravind ([@krish9219](https://github.com/krish9219)). PRs welcome across this repo; the **license server** (FastAPI + Postgres, Razorpay verification, key minting, device tracking) lives in a separate private repo.
 
 ---
 
 ## License
 
-[MIT](LICENSE) for the open-source core (the entire `phantom/` and `omnicli/` packages).
-The Pro tier (license-server source, hosted mirror curation, enterprise channel adapters) is proprietary and sold under the Aravind Labs commercial license.
+[MIT](LICENSE) for the entire `phantom/` and `omnicli/` packages in this repo. You can read, modify, fork, and redistribute the source under MIT terms.
 
-The boundary is documented in [`LICENSE`](LICENSE) and rationale in [`docs/adr/0001-open-core-licensing.md`](docs/adr/0001-open-core-licensing.md).
+The Pro **runtime gate** (`phantom/licensing/`) is also MIT — it's just a state machine that talks to a remote licence server. The licence server itself (key minting, payment verification, device tracking) is hosted at `phantom.aravindlabs.tech` and is **not** part of this repo.
+
+If you want lifetime Pro on the official build, buy a key at [phantom.aravindlabs.tech/buy](https://phantom.aravindlabs.tech/buy). If you want to fork and run your own gate-free build, MIT lets you do that — just don't claim it's the official Phantom.
 
 ---
 
