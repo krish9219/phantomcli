@@ -28,8 +28,16 @@ from phantom.daemon.server import DaemonServer, build_default_server, register_o
 
 
 @pytest.fixture
-def socket_path(tmp_path: Path) -> str:
-    return str(tmp_path / "phantom.sock")
+def socket_path():
+    """Short tmpdir for AF_UNIX. macOS limits AF_UNIX paths to ~104
+    bytes; pytest's ``tmp_path`` lives under
+    ``/private/var/folders/...`` which can blow past that. Anchor the
+    socket under ``/tmp`` (or ``$TMPDIR`` elsewhere) and clean up
+    after.
+    """
+    base = "/tmp" if sys.platform == "darwin" else None
+    with tempfile.TemporaryDirectory(prefix="ph-", dir=base) as d:
+        yield str(Path(d) / "phantom.sock")
 
 
 @pytest.fixture

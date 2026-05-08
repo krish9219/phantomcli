@@ -32,6 +32,18 @@ _skip_on_win32 = pytest.mark.skipif(
 )
 
 
+# Platform-portable absolute paths. ``/tmp/job`` is absolute on POSIX but
+# not on Windows (no drive letter), so the SandboxPolicy ``isabs`` check
+# rejects it. ``os.path.abspath`` returns ``/tmp/job`` unchanged on POSIX
+# and ``C:\tmp\job`` on Windows — both legal absolute paths for the
+# validator. The tests below don't assert exact path values; they just
+# need a valid SandboxPolicy instance.
+_J = os.path.abspath("/tmp/j")
+_JOB = os.path.abspath("/tmp/job")
+_A = os.path.abspath("/a")
+_B = os.path.abspath("/b")
+
+
 # ─── default_audit_path ───────────────────────────────────────────────────────
 
 
@@ -176,8 +188,8 @@ class TestAuditWriter:
 class TestMakeRecord:
     def test_basic_record(self):
         policy = SandboxPolicy(
-            workdir="/tmp/job",
-            writable_paths=("/tmp/job",),
+            workdir=_JOB,
+            writable_paths=(_JOB,),
         )
         rec = make_record(
             code="ok",
@@ -198,7 +210,7 @@ class TestMakeRecord:
         assert rec.duration_s == 0.0123  # rounded to 4dp
 
     def test_argv_hash_is_sha256_hex(self):
-        policy = SandboxPolicy(workdir="/tmp/j", writable_paths=("/tmp/j",))
+        policy = SandboxPolicy(workdir=_J, writable_paths=(_J,))
         rec = make_record(
             code="ok",
             tier="unshare",
@@ -213,7 +225,7 @@ class TestMakeRecord:
         assert all(c in "0123456789abcdef" for c in rec.cmd_sha256)
 
     def test_same_argv_same_hash(self):
-        policy = SandboxPolicy(workdir="/tmp/j", writable_paths=("/tmp/j",))
+        policy = SandboxPolicy(workdir=_J, writable_paths=(_J,))
         a = make_record(code="ok", tier="t", argv=["a", "b"], policy=policy,
                         duration_s=0, exit_code=0, truncated=False, pid_actual=None)
         b = make_record(code="ok", tier="t", argv=["a", "b"], policy=policy,
@@ -221,7 +233,7 @@ class TestMakeRecord:
         assert a.cmd_sha256 == b.cmd_sha256
 
     def test_different_argv_different_hash(self):
-        policy = SandboxPolicy(workdir="/tmp/j", writable_paths=("/tmp/j",))
+        policy = SandboxPolicy(workdir=_J, writable_paths=(_J,))
         a = make_record(code="ok", tier="t", argv=["a", "b"], policy=policy,
                         duration_s=0, exit_code=0, truncated=False, pid_actual=None)
         b = make_record(code="ok", tier="t", argv=["a", "c"], policy=policy,
@@ -229,8 +241,8 @@ class TestMakeRecord:
         assert a.cmd_sha256 != b.cmd_sha256
 
     def test_policy_hash_changes_with_network_flag(self):
-        p1 = SandboxPolicy(workdir="/tmp/j", writable_paths=("/tmp/j",), network=False)
-        p2 = SandboxPolicy(workdir="/tmp/j", writable_paths=("/tmp/j",), network=True)
+        p1 = SandboxPolicy(workdir=_J, writable_paths=(_J,), network=False)
+        p2 = SandboxPolicy(workdir=_J, writable_paths=(_J,), network=True)
         r1 = make_record(code="ok", tier="t", argv=["a"], policy=p1,
                          duration_s=0, exit_code=0, truncated=False, pid_actual=None)
         r2 = make_record(code="ok", tier="t", argv=["a"], policy=p2,
@@ -240,8 +252,8 @@ class TestMakeRecord:
     def test_policy_hash_stable_under_path_reorder(self):
         # Reordering writable_paths must NOT change the policy hash —
         # the security envelope is the same.
-        p1 = SandboxPolicy(workdir="/a", writable_paths=("/a", "/b"))
-        p2 = SandboxPolicy(workdir="/a", writable_paths=("/b", "/a"))
+        p1 = SandboxPolicy(workdir=_A, writable_paths=(_A, _B))
+        p2 = SandboxPolicy(workdir=_A, writable_paths=(_B, _A))
         r1 = make_record(code="ok", tier="t", argv=["x"], policy=p1,
                          duration_s=0, exit_code=0, truncated=False, pid_actual=None)
         r2 = make_record(code="ok", tier="t", argv=["x"], policy=p2,
@@ -249,7 +261,7 @@ class TestMakeRecord:
         assert r1.policy_hash == r2.policy_hash
 
     def test_timestamp_format(self):
-        policy = SandboxPolicy(workdir="/tmp/j", writable_paths=("/tmp/j",))
+        policy = SandboxPolicy(workdir=_J, writable_paths=(_J,))
         rec = make_record(code="ok", tier="t", argv=["x"], policy=policy,
                           duration_s=0, exit_code=0, truncated=False, pid_actual=None)
         # ISO-8601 with microsecond precision and Z suffix.
@@ -259,7 +271,7 @@ class TestMakeRecord:
 
 def _sample_record() -> AuditRecord:
     """Return a deterministic AuditRecord for tests."""
-    policy = SandboxPolicy(workdir="/tmp/j", writable_paths=("/tmp/j",))
+    policy = SandboxPolicy(workdir=_J, writable_paths=(_J,))
     return make_record(
         code="ok",
         tier="unshare",

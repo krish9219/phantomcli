@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import json
+import sys
 
 import pytest
 
@@ -78,6 +79,17 @@ class TestDefaultServer:
         assert responses[1].result["ok"]
         assert responses[2].result["text"] == "world"
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason=(
+            "GitHub-hosted Windows runners ship Docker Desktop in "
+            "Windows-container mode, which rejects the docker backend's "
+            "--read-only flag (\"read-only mode is not supported for "
+            "Windows containers\"). The MCP run_bash tool is exercised "
+            "on Linux+macOS; on Windows users invoke it via the "
+            "passthrough sandbox + cmd.exe path covered separately."
+        ),
+    )
     def test_run_bash_tool_works(self, server, tmp_path):
         responses = _drive(server, [
             MCPRequest(method="initialize", id=1),

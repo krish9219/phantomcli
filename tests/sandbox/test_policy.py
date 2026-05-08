@@ -5,6 +5,9 @@ Coverage target: 100% line, 100% branch on `phantom.sandbox.policy`.
 
 from __future__ import annotations
 
+import os
+import sys
+
 import pytest
 
 from phantom.errors import ConfigError, PhantomError
@@ -13,6 +16,18 @@ from phantom.sandbox.policy import (
     ResourceLimits,
     SandboxPolicy,
 )
+
+
+# Platform-portable absolute paths. ``/tmp/job`` etc. are absolute on
+# POSIX but not on Windows (no drive letter). ``os.path.abspath``
+# anchors them to the current drive on Windows, and is a no-op on POSIX.
+_JOB = os.path.abspath("/tmp/job")
+_JOB_SUB = os.path.abspath("/tmp/job/sub")
+_JOB_TRAILING = _JOB + os.sep  # what we *pass in* to test trailing-slash normalisation
+_VAR_TMP = os.path.abspath("/var/tmp")
+_DATA = os.path.abspath("/data")
+_DATA_TRAILING = _DATA + os.sep
+_ROOT = os.path.abspath(os.sep)
 
 
 # ─── ResourceLimits ───────────────────────────────────────────────────────────
@@ -101,8 +116,8 @@ class TestResourceLimits:
 
 class TestSandboxPolicyConstruction:
     def test_minimal_valid_policy(self):
-        p = SandboxPolicy(workdir="/tmp/job", writable_paths=("/tmp/job",))
-        assert p.workdir == "/tmp/job"
+        p = SandboxPolicy(workdir=_JOB, writable_paths=(_JOB,))
+        assert p.workdir == _JOB
         assert p.network is False
         assert p.capture_audit is True
         assert p.raise_on_truncation is False
@@ -117,48 +132,57 @@ class TestSandboxPolicyConstruction:
 
     def test_workdir_must_be_in_writable_paths(self):
         with pytest.raises(ConfigError, match="must be inside one of writable_paths"):
-            SandboxPolicy(workdir="/tmp/job", writable_paths=("/var/tmp",))
+            SandboxPolicy(workdir=_JOB, writable_paths=(_VAR_TMP,))
 
     def test_workdir_at_writable_path_root_allowed(self):
-        p = SandboxPolicy(workdir="/tmp/job", writable_paths=("/tmp/job",))
-        assert p.workdir == "/tmp/job"
+        p = SandboxPolicy(workdir=_JOB, writable_paths=(_JOB,))
+        assert p.workdir == _JOB
 
     def test_workdir_in_subdirectory_of_writable_allowed(self):
-        p = SandboxPolicy(workdir="/tmp/job/sub", writable_paths=("/tmp/job",))
-        assert p.workdir == "/tmp/job/sub"
+        p = SandboxPolicy(workdir=_JOB_SUB, writable_paths=(_JOB,))
+        assert p.workdir == _JOB_SUB
 
     def test_workdir_with_trailing_slash_in_writable_normalised(self):
-        p = SandboxPolicy(workdir="/tmp/job", writable_paths=("/tmp/job/",))
-        assert p.workdir == "/tmp/job"
+        p = SandboxPolicy(workdir=_JOB, writable_paths=(_JOB_TRAILING,))
+        assert p.workdir == _JOB
 
     def test_workdir_root_writable_allowed(self):
-        p = SandboxPolicy(workdir="/tmp/job", writable_paths=("/",))
-        assert p.workdir == "/tmp/job"
+        p = SandboxPolicy(workdir=_JOB, writable_paths=(_ROOT,))
+        assert p.workdir == _JOB
 
     def test_overlapping_paths_rejected(self):
         with pytest.raises(ConfigError, match="in both writable_paths and read_only_paths"):
             SandboxPolicy(
-                workdir="/data",
-                writable_paths=("/data",),
-                read_only_paths=("/data",),
+                workdir=_DATA,
+                writable_paths=(_DATA,),
+                read_only_paths=(_DATA,),
             )
 
     def test_overlapping_with_trailing_slashes(self):
         with pytest.raises(ConfigError, match="in both writable_paths and read_only_paths"):
             SandboxPolicy(
-                workdir="/data",
-                writable_paths=("/data/",),
-                read_only_paths=("/data",),
+                workdir=_DATA,
+                writable_paths=(_DATA_TRAILING,),
+                read_only_paths=(_DATA,),
             )
 
 
 class TestSandboxPolicyImmutability:
     def test_policy_is_frozen(self):
-        p = SandboxPolicy(workdir="/tmp/job", writable_paths=("/tmp/job",))
+        p = SandboxPolicy(workdir=_JOB, writable_paths=(_JOB,))
         with pytest.raises(Exception):
             p.network = True  # type: ignore[misc]
 
 
+# DEFAULT_DENY_PATHS expansion is hard-coded for POSIX home layouts —
+# the implementation does ``home + "/.ssh"`` style concatenation and the
+# defaults reference ``/etc/shadow`` etc. On Windows, callers would
+# typically use Windows-native deny lists; that surface area is out of
+# scope for these unit tests.
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="DEFAULT_DENY_PATHS expansion is POSIX-style.",
+)
 class TestExpandedDenyPaths:
     def test_default_deny_list_is_applied(self):
         p = SandboxPolicy(workdir="/tmp/job", writable_paths=("/tmp/job",))

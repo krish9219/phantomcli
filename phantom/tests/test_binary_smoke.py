@@ -84,14 +84,24 @@ def test_binary_bench_returns_v1():
 
 
 def test_binary_cold_start_under_2s():
-    """The binary's `version` round-trip must beat 2 s — far above our
-    real target (the daemon path) but a sanity guard against PyInstaller
-    regressions like UPX being re-enabled."""
+    """The binary's `version` round-trip must beat the budget — far above
+    our real target (the daemon path) but a sanity guard against
+    PyInstaller regressions like UPX being re-enabled.
+
+    Windows pays a real cost on cold start: NTFS access patterns,
+    Defender / AV scans on first-use of the bootloader's _MEI extract
+    dir, and slower CreateProcess. 2.0 s is fine on Linux/macOS; on
+    Windows we relax to 5.0 s so a one-off scan doesn't go red, while
+    still catching gross regressions (UPX would push us north of 10 s).
+    """
+    budget = 5.0 if sys.platform == "win32" else 2.0
     t0 = time.perf_counter()
     res = _run(["version"])
     elapsed = time.perf_counter() - t0
     assert res.returncode == 0
-    assert elapsed < 2.0, f"binary cold start took {elapsed:.2f}s (regression?)"
+    assert elapsed < budget, (
+        f"binary cold start took {elapsed:.2f}s (budget {budget:.1f}s — regression?)"
+    )
 
 
 def test_binary_unknown_subcommand_exits_nonzero():
