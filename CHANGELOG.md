@@ -13,6 +13,42 @@ The major version cadence:
 
 ---
 
+## [1.1.1] — 2026-05-08 — Phantom shell (REPL) + installer shim fix
+
+Patch release. Two surface improvements on top of the v1.1.0 licensing
+landing:
+
+### Added
+
+* **Phantom shell (REPL).** Running `phantom` with no subcommand now
+  drops you into an interactive prompt (`phantom> `) where every
+  existing subcommand works without re-typing `phantom`. Banner shows
+  current licence tier inline (`Pro`, `Pro · trial · 11d remaining`,
+  or `Free`). Built-ins: `help`, `exit`/`quit`/`:q`, `clear`. Each line
+  is `shlex.split` and dispatched into the existing Typer app, so
+  `SystemExit` from `--help` or command errors no longer kills the
+  loop. Uses `prompt_toolkit` when available (history, line editing,
+  Ctrl+R search) with `input()` fallback for piped/non-TTY hosts.
+* `~/.phantom/.repl_history` — persistent shell history across sessions.
+
+### Fixed
+
+* **Installer shim.** `install.ps1` and `install.sh` were generating a
+  shim that ran `python -m phantom.cli` without setting `PYTHONPATH`.
+  Outside the install directory the shim failed with
+  `ModuleNotFoundError: No module named 'phantom'`. Both shims now bake
+  in `PYTHONPATH=$INSTALL_DIR` so `phantom` works from anywhere.
+
+### Tests
+
+* 10 new REPL tests covering: exit/quit/EOF, blank-line skipping,
+  subcommand dispatch, `help` survives, unknown command survives,
+  parse errors are reported, the Pro gate firing inside the REPL
+  doesn't kill the loop, and the no-args entry actually triggers
+  `run_repl()`. Full local suite: 2186 passed, 8 skipped, 0 failed.
+
+---
+
 ## [1.1.0] — 2026-05-08 — Pro tier gating + 14-day trial + licensing backend
 
 Phantom now ships in two tiers. **Free** (chat, plugins, memory, MCP, bench,

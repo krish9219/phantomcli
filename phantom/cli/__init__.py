@@ -41,10 +41,19 @@ __all__ = ["app", "main"]
 
 app: typer.Typer = typer.Typer(
     name="phantom",
-    help="Phantom — local AI agent (v4-dev)",
-    no_args_is_help=True,
+    help="Phantom — local AI agent. Run with no args to open an interactive shell.",
+    no_args_is_help=False,
+    invoke_without_command=True,
     add_completion=False,
 )
+
+
+@app.callback(invoke_without_command=True)
+def _root(ctx: typer.Context) -> None:
+    """When the user runs `phantom` with no subcommand, drop into the shell."""
+    if ctx.invoked_subcommand is None:
+        from phantom.cli.repl import run_repl
+        run_repl()
 
 plugin_app: typer.Typer = typer.Typer(
     name="plugin",
