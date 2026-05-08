@@ -51,26 +51,30 @@ def test_eof_terminates_loop(isolated_home, monkeypatch, capsys):
 
 def test_blank_lines_are_skipped(isolated_home, monkeypatch, capsys):
     out, err = _run_repl_with_input(monkeypatch, capsys, ["", "   ", "version", "exit"])
-    assert "1.1.0" in out
+    from phantom._version import __version__
+    assert __version__ in out
 
 
 def test_version_subcommand_dispatches(isolated_home, monkeypatch, capsys):
     out, err = _run_repl_with_input(monkeypatch, capsys, ["version", "exit"])
-    assert "1.1.0" in out
+    from phantom._version import __version__
+    assert __version__ in out
 
 
 def test_help_does_not_kill_loop(isolated_home, monkeypatch, capsys):
     """`help` invokes --help (which raises SystemExit internally); loop must survive."""
     out, err = _run_repl_with_input(monkeypatch, capsys, ["help", "version", "exit"])
     # version still ran AFTER help — proves the loop didn't die.
-    assert "1.1.0" in out
+    from phantom._version import __version__
+    assert __version__ in out
 
 
 def test_unknown_command_does_not_kill_loop(isolated_home, monkeypatch, capsys):
     out, err = _run_repl_with_input(
         monkeypatch, capsys, ["definitely_not_a_command", "version", "exit"],
     )
-    assert "1.1.0" in out
+    from phantom._version import __version__
+    assert __version__ in out
 
 
 def test_parse_error_is_reported(isolated_home, monkeypatch, capsys):
@@ -79,7 +83,8 @@ def test_parse_error_is_reported(isolated_home, monkeypatch, capsys):
         monkeypatch, capsys, ['echo "unterminated', "version", "exit"],
     )
     assert "parse error" in err
-    assert "1.1.0" in out
+    from phantom._version import __version__
+    assert __version__ in out
 
 
 def test_pro_gate_inside_repl_does_not_kill_loop(isolated_home, monkeypatch, capsys):
@@ -95,7 +100,8 @@ def test_pro_gate_inside_repl_does_not_kill_loop(isolated_home, monkeypatch, cap
     out, err = _run_repl_with_input(
         monkeypatch, capsys, ['swarm "test goal" --json', "version", "exit"],
     )
-    assert "1.1.0" in out  # version ran after the gate fired
+    from phantom._version import __version__
+    assert __version__ in out  # version ran after the gate fired
     assert "Pro feature" in err or "Phantom Pro" in err
 
 
