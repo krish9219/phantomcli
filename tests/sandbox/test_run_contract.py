@@ -55,6 +55,11 @@ def backend(request) -> SandboxBackend:
 
 @pytest.fixture
 def policy(tmp_path):
+    # Make tmp_path world-writable so the docker backend (which runs as
+    # root inside the container with --cap-drop=ALL — no
+    # CAP_DAC_OVERRIDE) can still write through the bind-mount on hosted
+    # CI where the runner user owns tmp_path with mode 0700.
+    tmp_path.chmod(0o777)
     return SandboxPolicy(
         workdir=str(tmp_path),
         writable_paths=(str(tmp_path),),

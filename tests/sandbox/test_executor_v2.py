@@ -58,6 +58,11 @@ class TestExecuteBashHappyPath:
         assert "hello" in res.stdout
 
     def test_writable_workdir(self, tmp_path):
+        # Docker backend runs as root inside container with
+        # --cap-drop=ALL (no CAP_DAC_OVERRIDE). Ensure host dir is
+        # writable from any UID so the bind-mount write succeeds on
+        # hosted CI.
+        tmp_path.chmod(0o777)
         req = ExecuteBashRequest(
             command=f"echo data > {tmp_path}/out && cat {tmp_path}/out",
             workdir=str(tmp_path),

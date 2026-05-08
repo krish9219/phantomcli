@@ -93,7 +93,12 @@ exe = EXE(
     name='phantom',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=True,
+    # strip=False: GNU `strip` (the only one on Windows hosted runners,
+    # via MinGW) corrupts the bundled python3xx.dll, producing a binary
+    # that dies at launch with "Failed to load Python DLL". The size
+    # win on POSIX is small enough that disabling everywhere keeps the
+    # spec single-platform-clean.
+    strip=False,
     # UPX compression makes the binary smaller but adds 100-300 ms to
     # every invocation while the bootloader decompresses into /tmp.
     # Phantom's whole performance pitch is sub-50 ms perceived start
