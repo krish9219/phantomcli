@@ -78,6 +78,17 @@ def test_engine_executor_is_importable() -> None:
 
 @pytest.mark.stage1
 @sandbox_capable
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "All four sandboxed backends ({bwrap,firejail,unshare,docker}) "
+        "are POSIX-only at runtime — on hosted Windows runners docker.exe "
+        "is on PATH (so sandbox_capable doesn't skip) but Docker Desktop's "
+        "daemon may or may not be Linux-container ready, and the other "
+        "three never apply. select_backend() correctly falls through to "
+        "passthrough on Windows; that's not a regression."
+    ),
+)
 def test_select_backend_returns_some_backend() -> None:
     from phantom.sandbox import select_backend
     b = select_backend()

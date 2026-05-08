@@ -238,13 +238,23 @@ class SandboxPolicy:
         if not os.path.isabs(self.workdir):
             raise ConfigError(f"workdir must be absolute, got {self.workdir!r}")
 
-        # workdir must be within at least one writable mount.
-        wp = tuple(p.rstrip("/") or "/" for p in self.writable_paths)
-        wd = self.workdir.rstrip("/") or "/"
-        # "/" as a writable mount accepts every absolute workdir — we
-        # special-case it because the startswith trick below would
-        # check "//", which fails for `/tmp/job`.
-        ok = any(p == "/" or wd == p or wd.startswith(p + "/") for p in wp)
+        # workdir must be within at least one writable mount. Normalise via
+        # os.path.normpath so the comparison is OS-aware: trailing
+        # separators (both / and \) collapse, mixed separators on Windows
+        # fold to backslashes, and "." / ".." segments resolve. This is
+        # what lets `D:\tmp\job\sub` match writable_paths=("D:\\tmp\\job",)
+        # on Windows the same way `/tmp/job/sub` matches `/tmp/job` on
+        # POSIX.
+        wp = tuple(os.path.normpath(p) for p in self.writable_paths)
+        wd = os.path.normpath(self.workdir)
+        # A filesystem root (`/` on POSIX, `D:\` on Windows) accepts any
+        # absolute workdir. `os.path.dirname(root) == root` for every
+        # root on every OS, so this is a portable identity check.
+        def _is_root(p: str) -> bool:
+            return os.path.dirname(p) == p
+        ok = any(
+            _is_root(p) or wd == p or wd.startswith(p + os.sep) for p in wp
+        )
         if not ok:
             raise ConfigError(
                 f"workdir {self.workdir!r} must be inside one of writable_paths "
@@ -256,7 +266,7 @@ class SandboxPolicy:
         # bind-mount masks the read-only one for that subtree). Equality is
         # forbidden: ambiguous.
         for r in self.read_only_paths:
-            r_norm = r.rstrip("/") or "/"
+            r_norm = os.path.normpath(r)
             for w in wp:
                 if r_norm == w:
                     raise ConfigError(
