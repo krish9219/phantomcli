@@ -2,6 +2,11 @@
 
 Spawns a real DaemonServer in a thread, talks to it over a real unix
 socket, verifies wire format and op dispatch.
+
+The unix-socket transport is the POSIX path; on Windows the daemon
+uses TCP loopback (covered by ``test_daemon_transport.py``). Skip
+this whole module on Windows so we don't drag the unix-socket
+plumbing through a platform that intentionally doesn't use it.
 """
 
 from __future__ import annotations
@@ -15,6 +20,18 @@ import time
 from pathlib import Path
 
 import pytest
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "Daemon end-to-end tests use AF_UNIX directly; on Windows the "
+        "production daemon uses TCP loopback (test_daemon_transport.py "
+        "covers that path). Modern Windows has AF_UNIX support so the "
+        "import-time skipif on test_client_raises_when_no_daemon doesn't "
+        "fire, but the server thread still hangs on accept() because "
+        "DaemonClient assumes POSIX socket ownership semantics."
+    ),
+)
 
 from phantom._version import __version__
 from phantom.daemon import (

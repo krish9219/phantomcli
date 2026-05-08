@@ -59,15 +59,24 @@ class DockerBackend(SandboxBackend):
         if shutil.which("docker") is None:
             return False
         try:
-            # ``docker info`` confirms the daemon is reachable, not just
-            # that the client is installed.
+            # Use --format to ask for OSType in one round-trip. This both
+            # confirms the daemon is reachable (non-zero rc otherwise) and
+            # tells us whether it's Linux- or Windows-container mode.
+            # Our launch() builds Linux-only flags (--read-only, --tmpfs,
+            # --cap-drop=ALL, alpine image) which Windows containers
+            # reject outright, so probe False on Windows-container hosts.
+            # Docker Desktop on Windows with the WSL2 backend reports
+            # OSType=linux and works fine; the native Windows-container
+            # mode reports OSType=windows.
             r = subprocess.run(  # noqa: S603 — sandbox backend, allowed
-                ["docker", "info"],
+                ["docker", "info", "--format", "{{.OSType}}"],
                 capture_output=True,
                 timeout=3,
                 check=False,
             )
-            return r.returncode == 0
+            if r.returncode != 0:
+                return False
+            return r.stdout.decode("utf-8", errors="replace").strip().lower() == "linux"
         except (OSError, subprocess.SubprocessError):
             return False
 
