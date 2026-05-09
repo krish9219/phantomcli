@@ -1223,9 +1223,20 @@ def run_repl(
                     enable_open_in_editor=True,
                     mouse_support=False,
                 )
+                # Capture the styled label closure so the prompt-toolkit
+                # session owns the rendering (avoids the v1.1.24 bug
+                # where multiline-mode repaints clobbered the label
+                # printed before read_line).
+                CYAN = "\033[36m"; RESET = "\033[0m"
+                def _build_prompt_label():
+                    try:
+                        return f"\n{CYAN}{user_label} ›{RESET} "
+                    except Exception:
+                        return f"\n{user_label} > "
+
                 def _read():
                     try:
-                        text = _chat_session.prompt("")
+                        text = _chat_session.prompt(_build_prompt_label())
                     except (EOFError, KeyboardInterrupt):
                         return ""
                     # Show paste-indicator AFTER the user submits if the
@@ -1241,6 +1252,9 @@ def run_repl(
                         sys.stdout.flush()
                     return text + "\n"
                 read_line = _read
+                # Mark that the prompt label is owned by prompt-toolkit
+                # now; run_repl shouldn't write its own copy.
+                read_line.__phantom_owns_label__ = True  # type: ignore[attr-defined]
             except Exception:
                 def _read():
                     return sys.stdin.readline()
@@ -1281,8 +1295,10 @@ def run_repl(
             assistant_label = _prof.assistant_name.lower()
     except Exception:
         pass
+    label_owned = getattr(read_line, "__phantom_owns_label__", False)
     while True:
-        write(f"{CYAN}{user_label} ›{RESET} ")
+        if not label_owned:
+            write(f"{CYAN}{user_label} ›{RESET} ")
         line = read_line()
         if not line:
             # EOF (Ctrl-D / pipe closed): exit gracefully.

@@ -33,19 +33,85 @@ log = logging.getLogger(__name__)
 # keeps git diffs reviewable. Callers that want a different prompt
 # (custom personas, domain-specific agents) can pass their own
 # ``system_prompt`` to :class:`AgentSession`.
+_CHECKPOINT_RE = None  # populated lazily
+
+
+def _looks_like_premature_checkpoint(text: str) -> bool:
+    """Heuristic: is this text the model stopping mid-task to wait for
+    a "go ahead" from the user?
+
+    Triggers on phrases like "I'll run X next", "Let me X now", "Now I'll
+    X", "Re-running X", "Installing X now" — short, future/imperfective
+    sentences that promise an action but didn't take it.
+
+    Conservative: only fires when the message is short (<400 chars) AND
+    contains a forward-looking promise. Long final summaries always
+    pass through to the user.
+    """
+    if not text or len(text) > 400:
+        return False
+    global _CHECKPOINT_RE
+    if _CHECKPOINT_RE is None:
+        import re as _re
+        _CHECKPOINT_RE = _re.compile(
+            r"\b("
+            r"i'?ll\s+(now|then|run|start|test|verify|check|install|create|"
+            r"add|fix|edit|update|write|read|build|deploy|continue|keep)|"
+            r"let me\s+(run|start|test|verify|check|install|fix|continue|"
+            r"do that|proceed|do this|try|see)|"
+            r"now\s+i'?ll|"
+            r"now\s+(running|installing|starting|testing|verifying|"
+            r"checking|building|fixing|writing|editing|reading)|"
+            r"re-?running|re-?installing|re-?starting|"
+            # Present-continuous action verbs at sentence start (start
+            # of text OR right after a period+space). Catches "Installing
+            # X." / "Starting server." / "Running tests." / "Need X.
+            # Installing now."
+            r"(?:^|\.\s+)(installing|starting|running|testing|adding|"
+            r"creating|writing|editing|fixing|verifying|checking|building)"
+            r"\s+(\w+|the\s+\w+|and\s+\w+)|"
+            r"installing\s+(\w+\s+)?now|starting\s+(the\s+)?server\s+now|"
+            r"running\s+(pytest|the tests|tests)\s+now|"
+            r"need(s)?\s+\w+(-\w+)?\.\s*installing|"
+            r"will (now|then|run|start|test|verify|install|create|fix)\b"
+            r")",
+            _re.IGNORECASE | _re.MULTILINE,
+        )
+    return bool(_CHECKPOINT_RE.search(text))
+
+
 DEFAULT_SYSTEM_PROMPT = """\
 You are Phantom, a local coding agent. You help with software \
 engineering tasks: bug fixes, features, refactors, code review, and \
 debugging. You operate on the user's actual filesystem via tools, so \
 every action has real consequences — be deliberate.
 
-# Act, don't narrate
+# Act, don't narrate. Don't checkpoint mid-task.
 
 When the user asks you to create, run, install, fix, or build \
 something, **call tools to do it**. Do NOT describe the steps you \
 would take — actually take them. Saying "I will create app.py" \
 without calling write_file is a failure. Call write_file first, then \
 report what you did.
+
+**Critical rule: do not stop mid-task and wait for confirmation.** \
+Phrases like "I'll re-run pytest now", "Let me install pytest-asyncio", \
+"Now starting the server" are TRAPS — if you write them and end the \
+turn, you've failed. The user does not want to type "yeah proceed" \
+between every step. When you intend to do X next, IMMEDIATELY do X by \
+calling the tool. Only stop and return text when the ENTIRE task is \
+complete and you're reporting the final state.
+
+Examples of what NOT to do:
+  ❌ End turn with "Re-running pytest now."     (just call run_bash for it)
+  ❌ End turn with "Let me start the server."   (just call start_server)
+  ❌ End turn with "Now I'll fix the schema."   (just call edit_file)
+  ❌ End turn with "Installing pytest-asyncio." (just call run_bash)
+
+Examples of what TO do:
+  ✓ End turn with: "Server up at http://127.0.0.1:8000/docs. 9/9 tests pass."
+  ✓ End turn with: "Bug fixed (was `+ 1` instead of `- 1`); all 4 tests green."
+  ✓ End turn with: "Created 9 files; pytest 14/14 ✓; live at http://127.0.0.1:5000."
 
 Concretely:
 - "create me a flask app" → call write_file for each file, run_bash \
@@ -196,6 +262,9 @@ class AgentSession:
         deadline = _time.monotonic() + max(1.0, self.wall_clock_budget_s)
         last_text = ""
         recent_calls: list[tuple[str, str]] = []  # (tool_name, args_signature)
+        any_tools_used_this_turn = False
+        auto_continues_used = 0
+        max_auto_continues = 3
 
         for round_idx in range(self.max_tool_rounds + 1):
             if _time.monotonic() > deadline:
@@ -210,6 +279,33 @@ class AgentSession:
             last_text = response.text or last_text
 
             if not response.wants_tools:
+                # AUTO-CONTINUE: when the model returned text but the
+                # text reads like a checkpoint mid-task ("Re-running
+                # pytest now.", "Now I'll start the server.", "Installing
+                # X now.") AND we already executed tool calls earlier
+                # in this turn — that's the model stopping prematurely
+                # to wait for confirmation. Push it forward instead of
+                # returning to the user.
+                if (
+                    any_tools_used_this_turn
+                    and auto_continues_used < max_auto_continues
+                    and _looks_like_premature_checkpoint(response.text or "")
+                ):
+                    auto_continues_used += 1
+                    self.history.append(ProviderMessage(
+                        role="assistant", content=response.text or "",
+                    ))
+                    self.history.append(ProviderMessage(
+                        role="user",
+                        content=(
+                            "Continue. You said you would do something next — "
+                            "do it now using tools, without asking for "
+                            "permission. Don't summarise; just call the next "
+                            "tool. The user is waiting for the FINAL state, "
+                            "not progress reports."
+                        ),
+                    ))
+                    continue
                 # Final turn — record the assistant message and return.
                 self.history.append(ProviderMessage(
                     role="assistant", content=response.text or "",
@@ -218,6 +314,7 @@ class AgentSession:
 
             # Tool-call round: record the assistant request, then run
             # each tool and append its result.
+            any_tools_used_this_turn = True
             self.history.append(ProviderMessage(
                 role="assistant",
                 content=response.text or "",

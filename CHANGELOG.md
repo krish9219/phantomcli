@@ -13,6 +13,56 @@ The major version cadence:
 
 ---
 
+## [1.1.25] — 2026-05-10 — Auto-continue mid-task checkpoints + prompt label survives paste
+
+Patch release. Two real issues from the v1.1.24 user run:
+
+1. **Prompt label `Arvi Sir ›` disappeared after multi-line paste.**
+   prompt_toolkit's multi-line mode repaints the screen and clobbered
+   the label that `run_repl` wrote *before* calling `read_line`.
+2. **Agent kept stopping mid-task to wait for confirmation.** The
+   model would write *"Re-running pytest now."* / *"Now I'll fix the
+   schema."* / *"Installing pytest-asyncio."* and end the turn — the
+   user had to type "yeah proceed" between every step.
+
+### Fixed
+
+* **Prompt label survives paste** — the styled `user ›` label is now
+  passed *into* `PromptSession.prompt(...)` instead of being written
+  before. prompt_toolkit owns the rendering; multi-line repaints
+  preserve it. The duplicate label that `run_repl` used to write is
+  suppressed when prompt-toolkit is active (via a `__phantom_owns_label__`
+  attribute on `read_line`).
+* **Auto-continue mid-task** — after each provider call that returns
+  text but no tool calls, the agent loop now checks
+  `_looks_like_premature_checkpoint(text)`. If the text reads as a
+  forward-looking promise (*"I'll run pytest"*, *"Let me start the
+  server"*, *"Now I'll fix the schema"*, *"Installing pytest-asyncio"*,
+  *"Re-running pytest now"*) AND there were tool calls earlier in the
+  turn, the agent injects a continuation user message — *"Continue.
+  You said you would do something next — do it now using tools, without
+  asking for permission."* — and re-calls the provider. Capped at 3
+  auto-continues per turn so a misbehaving model can't burn unlimited
+  rounds. Conservative regex: only fires on short messages (<400 chars)
+  to avoid false positives on legitimate final summaries.
+* **Stronger anti-checkpointing in DEFAULT_SYSTEM_PROMPT.** Added a
+  *"Critical rule: do not stop mid-task and wait for confirmation"*
+  block with concrete ❌/✓ examples mirroring the user's observed
+  pattern. Models follow patterns they've seen demonstrated.
+
+### Tests
+
+* 23 new in `phantom/tests/test_v1_1_25_fixes.py`: parametrised
+  positive table (10 user-observed checkpoint phrases), parametrised
+  negative table (6 legitimate final summaries / conversational
+  replies), long-final-summary not flagged, empty/short text not
+  flagged, end-to-end auto-continue kicks in, no-prior-tools doesn't
+  auto-continue, three-checkpoint cap, legitimate completion passes
+  through, system prompt warns about premature stops with examples.
+* Suite: 2497 passed, 0 failed.
+
+---
+
 ## [1.1.24] — 2026-05-10 — Hot fix: `phantom chat` startup crash on Windows
 
 Hot fix. v1.1.23 shipped a Ctrl+V key-binding stub with `filter=None`
