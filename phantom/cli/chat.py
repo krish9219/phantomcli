@@ -40,10 +40,11 @@ from phantom.agent import (
     default_tools,
 )
 from phantom.agent.provider import OpenAICompatibleProvider
+from phantom.config.providers import CustomProvider, ProviderRegistry
 from phantom.errors import PhantomError
 from phantom.memory import MemoryStore
 
-__all__ = ["chat", "run_repl"]
+__all__ = ["chat", "resolve_chat_config", "run_repl"]
 
 
 SLASH_COMMANDS = {"/exit", "/quit", "/reset", "/history", "/help"}
@@ -123,6 +124,36 @@ def run_repl(
         write(f"phantom> {reply}\n")
 
 
+def resolve_chat_config(
+    *, base_url: str, api_key: str, model: str,
+) -> tuple[str, str, str, CustomProvider | None]:
+    """Resolve the (base_url, api_key, model) trio for chat.
+
+    Order of precedence:
+      1. Explicit ``--base-url`` / ``--model`` (or ``PHANTOM_*`` env vars)
+         that Typer has already coerced into the args.
+      2. The saved default provider in ``providers.json``. Its API key
+         comes from the registered env var (or the inline key, if any).
+      3. ``(None, None, None, None)`` — caller should run the setup wizard.
+    """
+    if base_url and model:
+        return base_url, api_key, model, None
+
+    registry = ProviderRegistry.load()
+    default = registry.get_default()
+    if default is None:
+        return base_url, api_key, model, None
+
+    resolved_key = api_key
+    if not resolved_key:
+        if default.api_key_env:
+            resolved_key = os.environ.get(default.api_key_env, "")
+        if not resolved_key and default.api_key_inline:
+            resolved_key = default.api_key_inline
+
+    return default.base_url, resolved_key, default.model, default
+
+
 def chat(
     base_url: str = typer.Option(
         "", "--base-url",
@@ -159,13 +190,40 @@ def chat(
     ),
 ) -> None:
     """Start an interactive chat session with the agent."""
-    if not base_url or not model:
+    if (base_url and not model) or (model and not base_url):
         typer.echo(
-            "phantom chat: --base-url and --model are required "
+            "phantom chat: --base-url and --model must be set together "
             "(or set PHANTOM_BASE_URL / PHANTOM_MODEL).",
             err=True,
         )
         raise typer.Exit(2)
+
+    base_url, api_key, model, _ = resolve_chat_config(
+        base_url=base_url, api_key=api_key, model=model,
+    )
+
+    if not base_url or not model:
+        from phantom.cli.setup_wizard import run_wizard, should_run_wizard
+        if should_run_wizard(base_url=base_url, model=model):
+            result = run_wizard()
+            if result.cancelled or result.provider is None:
+                raise typer.Exit(2)
+            base_url, _, model, _ = resolve_chat_config(
+                base_url="", api_key="", model="",
+            )
+            if not api_key:
+                p = result.provider
+                api_key = (
+                    os.environ.get(p.api_key_env, "") if p.api_key_env else ""
+                ) or p.api_key_inline
+        else:
+            typer.echo(
+                "phantom chat: no provider configured. Run `phantom chat` "
+                "interactively to set one up, or set PHANTOM_BASE_URL / "
+                "PHANTOM_MODEL.",
+                err=True,
+            )
+            raise typer.Exit(2)
 
     workdir_path = workdir or os.getcwd()
     Path(workdir_path).mkdir(parents=True, exist_ok=True)

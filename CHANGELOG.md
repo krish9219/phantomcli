@@ -13,6 +13,53 @@ The major version cadence:
 
 ---
 
+## [1.1.3] — 2026-05-09 — First-run setup wizard + REPL chat fall-through
+
+Patch release. Removes the two largest first-run frictions: `phantom
+chat` no longer demands `--base-url` / `--model` flags, and the
+`phantom>` shell now treats plain text as a chat message instead of
+rejecting it as "No such command".
+
+### Added
+
+* **First-run wizard** — running `phantom chat` with nothing configured
+  drops into an interactive picker that lists every preset (NVIDIA,
+  Groq, OpenRouter, GitHub Models, Together, Fireworks, Mistral,
+  Cerebras, DeepSeek, xAI, Ollama, LM Studio, vLLM, …) plus a "custom"
+  option for any OpenAI-compatible URL. The user picks once, pastes a
+  key (skipped for local endpoints), and the choice is saved as the
+  default provider. Subsequent runs skip the wizard.
+* **`phantom config provider use <name>`** — set the default provider
+  used by `phantom chat`. `provider list` now stars the default.
+* **`ProviderRegistry.set_default()` / `.get_default()`** — persists
+  the default name in `providers.json` under a top-level `"default"`
+  key. Backwards-compatible: existing files without the key continue
+  to load. Removing the default provider auto-promotes the first
+  remaining one.
+* **REPL chat fall-through** — inside `phantom>`, a line whose first
+  token isn't a known subcommand is sent to the agent as a chat
+  message. The first such line lazily builds an `AgentSession` (using
+  the saved default provider) and caches it. So `phantom` → `hi` now
+  actually replies.
+
+### Changed
+
+* `phantom chat` flag contract: passing only one of `--base-url` /
+  `--model` still exits 2 with the half-configured error; passing
+  neither (and having no env vars) now resolves from the saved default
+  or runs the wizard.
+
+### Tests
+
+* 25 new tests in `phantom/tests/test_setup_wizard.py` cover registry
+  default semantics, wizard preset/custom paths, cancel, local-only
+  preset (no key prompt), and `resolve_chat_config()` precedence.
+* `test_repl.py` updated: `test_unknown_command_prints_clean_message`
+  replaced with `test_unknown_word_falls_through_to_chat` plus a new
+  `test_known_subcommand_still_dispatches_first` regression.
+
+---
+
 ## [1.1.2] — 2026-05-08 — REPL: clean exits + pretty usage errors
 
 Patch release. Cosmetic but visible REPL polish.

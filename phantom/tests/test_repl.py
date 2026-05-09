@@ -117,11 +117,23 @@ def test_subgroup_help_does_not_print_empty_error(isolated_home, monkeypatch, ca
     assert __version__ in out  # subsequent dispatch still works
 
 
-def test_unknown_command_prints_clean_message(isolated_home, monkeypatch, capsys):
-    """`No such command 'foo'.` should be printed once, not as `error: <ctx>`."""
-    out, err = _run_repl_with_input(monkeypatch, capsys, ["definitely_not_real", "version", "exit"])
-    assert "No such command" in err
-    assert err.count("No such command") == 1
+def test_unknown_word_falls_through_to_chat(isolated_home, monkeypatch, capsys):
+    """Plain text (not a known subcommand) routes to the chat bridge, not
+    `No such command`. Without a provider configured, the bridge surfaces a
+    friendly error and the loop survives."""
+    out, err = _run_repl_with_input(monkeypatch, capsys, ["hi there", "version", "exit"])
+    assert "No such command" not in err
+    assert "no provider configured" in err.lower() or "provider" in err.lower()
+    from phantom._version import __version__
+    assert __version__ in out  # loop survived the fall-through error
+
+
+def test_known_subcommand_still_dispatches_first(isolated_home, monkeypatch, capsys):
+    """`version` is a known subcommand — must dispatch as a command, not chat."""
+    out, err = _run_repl_with_input(monkeypatch, capsys, ["version", "exit"])
+    from phantom._version import __version__
+    assert __version__ in out
+    assert "no provider configured" not in err.lower()
 
 
 def test_repl_runs_when_no_subcommand_passed(isolated_home, monkeypatch, capsys):

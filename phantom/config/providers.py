@@ -57,16 +57,17 @@ class CustomProvider:
 class ProviderRegistry:
     path: Path
     _providers: dict[str, CustomProvider]
+    _default: str = ""
 
     @classmethod
     def load(cls, path: Path | str | None = None) -> "ProviderRegistry":
         target = Path(path) if path else providers_path()
         if not target.exists():
-            return cls(path=target, _providers={})
+            return cls(path=target, _providers={}, _default="")
         try:
             data = json.loads(target.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            return cls(path=target, _providers={})
+            return cls(path=target, _providers={}, _default="")
         providers = {}
         for name, body in (data.get("custom") or {}).items():
             if not isinstance(body, dict):
@@ -82,7 +83,10 @@ class ProviderRegistry:
                 )
             except ValueError:
                 continue
-        return cls(path=target, _providers=providers)
+        default = str(data.get("default") or "")
+        if default and default not in providers:
+            default = ""
+        return cls(path=target, _providers=providers, _default=default)
 
     def list(self) -> list[CustomProvider]:
         return [self._providers[k] for k in sorted(self._providers)]
@@ -94,18 +98,42 @@ class ProviderRegistry:
         provider.validate()
         if not overwrite and provider.name in self._providers:
             raise ValueError(f"provider {provider.name!r} already exists; pass overwrite=True")
+        first = not self._providers
         self._providers[provider.name] = provider
+        if first and not self._default:
+            self._default = provider.name
         self._save()
 
     def remove(self, name: str) -> bool:
         if name not in self._providers:
             return False
         del self._providers[name]
+        if self._default == name:
+            self._default = next(iter(sorted(self._providers)), "")
         self._save()
         return True
 
+    def set_default(self, name: str) -> None:
+        if name not in self._providers:
+            raise ValueError(f"unknown provider {name!r}")
+        self._default = name
+        self._save()
+
+    def get_default(self) -> CustomProvider | None:
+        if not self._default:
+            return None
+        return self._providers.get(self._default)
+
+    @property
+    def default_name(self) -> str:
+        return self._default
+
     def _save(self) -> None:
-        body: dict[str, Any] = {"custom": {p.name: _provider_to_dict(p) for p in self.list()}}
+        body: dict[str, Any] = {
+            "custom": {p.name: _provider_to_dict(p) for p in self.list()},
+        }
+        if self._default:
+            body["default"] = self._default
         out = json.dumps(body, indent=2, sort_keys=True)
         self.path.write_text(out, encoding="utf-8")
         try:

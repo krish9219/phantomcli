@@ -93,22 +93,46 @@ def list_provider_presets() -> None:
         typer.echo(f"  {p.name:<14}{p.api_key_env:<24}{p.model}")
 
 
-@provider_app.command("list", help="List custom providers.")
+@provider_app.command("list", help="List custom providers (* = default).")
 def list_custom(json_output: bool = typer.Option(False, "--json")) -> None:
     registry = ProviderRegistry.load()
     rows = registry.list()
+    default = registry.default_name
     if json_output:
         typer.echo(json.dumps(
-            [{"name": p.name, "base_url": p.base_url, "model": p.model, "key_env": p.api_key_env} for p in rows],
+            {
+                "default": default,
+                "providers": [
+                    {"name": p.name, "base_url": p.base_url, "model": p.model, "key_env": p.api_key_env}
+                    for p in rows
+                ],
+            },
             indent=2,
         ))
         return
     if not rows:
-        typer.echo("  (no custom providers registered)")
+        typer.echo("  (no providers configured — run `phantom chat` to set one up)")
         return
     for p in rows:
         key_hint = f"env={p.api_key_env}" if p.api_key_env else ("inline" if p.api_key_inline else "no-key")
-        typer.echo(f"  {p.name:<20} {p.base_url}  ({p.model}, {key_hint})")
+        marker = "*" if p.name == default else " "
+        typer.echo(f"  {marker} {p.name:<20} {p.base_url}  ({p.model}, {key_hint})")
+    if default:
+        typer.echo("")
+        typer.echo(f"  default: {default}   (change with: phantom config provider use <name>)")
+
+
+@provider_app.command("use", help="Set the default provider used by `phantom chat`.")
+def use_default(name: str = typer.Argument(..., help="provider name (must already be registered)")) -> None:
+    registry = ProviderRegistry.load()
+    try:
+        registry.set_default(name)
+    except ValueError as e:
+        typer.echo(f"  {e}", err=True)
+        names = ", ".join(p.name for p in registry.list()) or "(none)"
+        typer.echo(f"  registered providers: {names}", err=True)
+        raise typer.Exit(2)
+    typer.echo(f"  default provider: {name}")
 
 
 @provider_app.command("remove", help="Remove a custom provider.")
