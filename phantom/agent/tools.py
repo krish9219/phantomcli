@@ -16,6 +16,8 @@ from phantom.errors import PhantomError
 from phantom.memory import MemoryStore
 from phantom.sandbox.policy import ResourceLimits
 from phantom.tools.fs import edit_file, list_dir, read_file, write_file
+from phantom.tools.web_fetch import web_fetch
+from phantom.tools.web_search import web_search
 
 __all__ = ["default_tools"]
 
@@ -313,6 +315,49 @@ def _edit_file(args: dict[str, Any], *, allowlist: tuple[str, ...]) -> str:
     return json.dumps(result)
 
 
+def _web_search(args: dict[str, Any]) -> str:
+    query = args.get("query", "")
+    if not isinstance(query, str) or not query.strip():
+        return json.dumps({
+            "error": "web_search: 'query' must be a non-empty string",
+            "hint": 'Retry with: {"query": "GT vs RR cricket score today"}.',
+        })
+    max_results = int(args.get("max_results", 6))
+    try:
+        hits = web_search(query=query, max_results=max_results)
+    except PhantomError as e:
+        return json.dumps({"error": str(e)})
+    return json.dumps([
+        {"title": h.title, "url": h.url, "snippet": h.snippet}
+        for h in hits
+    ])
+
+
+def _web_fetch(args: dict[str, Any]) -> str:
+    url = args.get("url", "")
+    if not isinstance(url, str) or not url.strip():
+        return json.dumps({
+            "error": "web_fetch: 'url' must be a non-empty string",
+            "hint": 'Retry with: {"url": "https://example.com"}.',
+        })
+    max_bytes = int(args.get("max_bytes", 256 * 1024))
+    if max_bytes < 1024:
+        max_bytes = 1024
+    result = web_fetch(url=url, max_bytes=max_bytes)
+    if not result.ok:
+        return json.dumps({"error": result.error or "fetch failed", "url": url})
+    body = result.text or ""
+    summary = {
+        "ok": True,
+        "url": result.url,
+        "status": result.status,
+        "content_type": result.content_type,
+        "text": body[:8192],
+        "truncated": len(body) > 8192 or result.truncated,
+    }
+    return json.dumps(summary)
+
+
 def _memory_search(
     args: dict[str, Any], *, store: MemoryStore, namespace: dict[str, str]
 ) -> str:
@@ -529,6 +574,52 @@ def default_tools(
                 "required": ["path"],
             },
             handler=lambda args: _list_dir(args, allowlist=fs_allowlist),
+        ),
+        ToolDefinition(
+            name="web_search",
+            description=(
+                "Search the open web. Use when the user asks about "
+                "current/live/recent information you wouldn't know from "
+                "training data: sports scores, news, today's prices, "
+                "current docs, recent GitHub activity. Returns a list "
+                "of {title, url, snippet}. Typical follow-up: pick the "
+                "most relevant URL and call web_fetch on it for the "
+                "full content. Default 6 results."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string",
+                              "description": "Free-text search query."},
+                    "max_results": {"type": "integer",
+                                    "description": "1-20, default 6.",
+                                    "default": 6},
+                },
+                "required": ["query"],
+            },
+            handler=_web_search,
+        ),
+        ToolDefinition(
+            name="web_fetch",
+            description=(
+                "Fetch a URL over HTTPS and return its text body. Use "
+                "after web_search to read the actual page, or directly "
+                "when you have a known URL. Refuses private/internal "
+                "hosts (SSRF block). Body is truncated at ~8 KB; ask "
+                "for max_bytes higher if you need more."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string",
+                            "description": "Absolute http(s) URL."},
+                    "max_bytes": {"type": "integer",
+                                  "description": "Max bytes to read (>=1024).",
+                                  "default": 262144},
+                },
+                "required": ["url"],
+            },
+            handler=_web_fetch,
         ),
     ]
 

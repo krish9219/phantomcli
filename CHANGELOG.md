@@ -13,6 +13,43 @@ The major version cadence:
 
 ---
 
+## [1.1.21] — 2026-05-09 — web_search + web_fetch as agent tools
+
+Patch release. Triggered by the v1.1.20 user message: asked Phantom
+"what is the score of GT vs RR today" and got "I don't have access
+to real-time data". `phantom/tools/web_fetch.py` already existed as
+a library function but was never registered as an agent tool; there
+was no `web_search` at all.
+
+### Added
+
+* **`web_search` agent tool** — provider chain: Brave Search (env
+  `BRAVE_SEARCH_API_KEY`) → Tavily (env `TAVILY_API_KEY`) →
+  DuckDuckGo HTML scrape (no key needed). Returns `[{title, url,
+  snippet}]`. Default 6 results, max 20.
+* **`web_fetch` agent tool** — wraps the existing
+  `phantom.tools.web_fetch.web_fetch` (HTTPS only, SSRF block on
+  private hosts). Returns `{ok, url, status, content_type, text,
+  truncated}` with text capped at 8 KB so the agent context stays
+  sane. Used for: read the actual page after `web_search`, or fetch
+  a known URL directly.
+* Both tools are registered in `default_tools` so every chat session
+  gets them automatically — the model now answers "today's score"
+  type questions by `web_search` → pick best hit → `web_fetch`.
+
+### Tests
+
+* 14 new in `phantom/tests/test_web_tools.py`: HTML strip + entity
+  decode utilities, DuckDuckGo URL unwrap, full DDG-result regex
+  parse with a fake response, no-results-found PhantomError path,
+  empty-query/empty-url JSON hint paths, success-shape JSON output,
+  PhantomError surfaced as `error` field, body-truncation at 8 KB,
+  private-host fetch error propagated, `default_tools` registration
+  + schema sanity.
+* Suite: 2449 passed, 0 failed.
+
+---
+
 ## [1.1.20] — 2026-05-09 — `start_server` tool — true detached spawn + URL probe
 
 Patch release. Triggered by the v1.1.19 user report: the model called
