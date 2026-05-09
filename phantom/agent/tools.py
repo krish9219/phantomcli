@@ -8,27 +8,91 @@ new tool is one new entry in :func:`default_tools`.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Callable
 
 from phantom.engine import ExecuteBashRequest, execute_bash
 from phantom.errors import PhantomError
 from phantom.memory import MemoryStore
+from phantom.sandbox.policy import ResourceLimits
 from phantom.tools.fs import edit_file, list_dir, read_file, write_file
 
 __all__ = ["default_tools"]
 
 
+# Patterns that look like long-running foreground servers. We don't refuse
+# them — the user might genuinely want a one-shot test run that times out
+# at the wall-clock cap — but we append a hint to the tool result so the
+# model knows to background the next attempt.
+_SERVER_START_PATTERNS = (
+    re.compile(r"\bpython\s+(\S+\.py|-m\s+\S+)\b"),
+    re.compile(r"\bflask\s+run\b"),
+    re.compile(r"\buvicorn\s+\S+"),
+    re.compile(r"\bgunicorn\s+\S+"),
+    re.compile(r"\bnpm\s+(start|run|dev)\b"),
+    re.compile(r"\bpnpm\s+(start|run|dev)\b"),
+    re.compile(r"\byarn\s+(start|run|dev)\b"),
+    re.compile(r"\bnode\s+\S+\.(js|mjs|ts)\b"),
+    re.compile(r"\bnext\s+(dev|start)\b"),
+    re.compile(r"\brails\s+server\b"),
+)
+
+
+def _looks_like_server_start(cmd: str) -> bool:
+    return any(p.search(cmd) for p in _SERVER_START_PATTERNS)
+
+
 def _run_bash(args: dict[str, Any], *, workdir: str) -> str:
     cmd = args.get("command", "")
     if not isinstance(cmd, str) or not cmd.strip():
-        raise PhantomError("run_bash: 'command' must be a non-empty string")
+        return json.dumps({
+            "error": "run_bash: 'command' must be a non-empty string",
+            "hint": (
+                "Retry with non-empty 'command'. Example: "
+                '{"command": "python --version"} or '
+                '{"command": "mkdir -p ./out"}.'
+            ),
+        })
+    timeout_s = float(args.get("timeout", 60.0))
+    timeout_s = max(1.0, min(timeout_s, 600.0))  # clamp 1s..10min
+
     req = ExecuteBashRequest(
         command=cmd,
         workdir=workdir,
         writable_paths=(workdir,),
         network=bool(args.get("network", False)),
+        limits=ResourceLimits(
+            wall_s=timeout_s,
+            cpu_s=min(timeout_s, 60.0),
+            rss_mib=512,
+        ),
     )
-    result = execute_bash(req)
+    from phantom.errors import SandboxTimeoutError
+    try:
+        result = execute_bash(req)
+    except SandboxTimeoutError:
+        # Sandbox killed the command at the wall-clock cap. Fabricate a
+        # result so the model gets actionable feedback (especially with
+        # the server-start hint) instead of a turn-killing exception.
+        summary: dict[str, Any] = {
+            "exit_code": -1,
+            "stdout": "",
+            "stderr": f"command exceeded {timeout_s:.0f}s wall-clock timeout",
+            "tier": 0,
+            "wall_s": timeout_s,
+            "truncated": True,
+        }
+        if _looks_like_server_start(cmd):
+            summary["hint"] = (
+                "This command looks like a long-running server (Flask, "
+                "uvicorn, npm start, …). It blocked until the timeout "
+                f"({timeout_s:.0f}s) fired. To start a server without "
+                "blocking, use background syntax: on Windows "
+                "`start /b python app.py`, on POSIX "
+                "`nohup python app.py >server.log 2>&1 &`. Then tell "
+                "the user the URL and stop calling tools."
+            )
+        return json.dumps(summary)
     summary = {
         "exit_code": result.exit_code,
         "stdout": result.stdout[-4096:],
@@ -37,6 +101,17 @@ def _run_bash(args: dict[str, Any], *, workdir: str) -> str:
         "wall_s": round(result.wall_s, 4),
         "truncated": result.truncated,
     }
+    if _looks_like_server_start(cmd) and result.wall_s >= timeout_s - 1:
+        # Server kept running until the timeout fired — model probably
+        # tried to run a long-lived process in the foreground.
+        summary["hint"] = (
+            "This command looks like a long-running server (Flask, "
+            "uvicorn, npm start, …). It hit the wall-clock timeout "
+            f"({timeout_s:.0f}s). To start a server without blocking, "
+            "use background syntax: on Windows `start /b python app.py`, "
+            "on POSIX `nohup python app.py >server.log 2>&1 &`. Then "
+            "tell the user the URL and stop calling tools."
+        )
     return json.dumps(summary)
 
 
@@ -168,7 +243,13 @@ def default_tools(
             description=(
                 "Execute a shell command in a sandbox. The command runs with "
                 "no network by default; the working directory is writable but "
-                "the host filesystem is read-only with secret paths blocked."
+                "the host filesystem is read-only with secret paths blocked. "
+                "Default timeout is 60 seconds (max 600). "
+                "DO NOT run long-running servers in the foreground — they "
+                "will block until the timeout fires. Background them: on "
+                "Windows use `start /b python app.py`, on POSIX use "
+                "`nohup python app.py >server.log 2>&1 &`. After starting "
+                "a server, stop calling tools and tell the user the URL."
             ),
             input_schema={
                 "type": "object",
@@ -177,6 +258,9 @@ def default_tools(
                     "network": {"type": "boolean",
                                 "description": "Allow network egress.",
                                 "default": False},
+                    "timeout": {"type": "number",
+                                "description": "Wall-clock seconds before kill (default 60, max 600).",
+                                "default": 60},
                 },
                 "required": ["command"],
             },

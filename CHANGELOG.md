@@ -13,6 +13,51 @@ The major version cadence:
 
 ---
 
+## [1.1.18] — 2026-05-09 — run_bash 60s default + server-start guidance
+
+Patch release. Triggered by the v1.1.17 user report: `python app.py`
+started Flask in the foreground and the agent stayed locked for 25
+minutes — the old 300s per-call timeout meant each blocked tool ate
+5 minutes of the wall-clock budget.
+
+### Fixed
+
+* **`run_bash` default timeout 300s → 60s.** Most legitimate commands
+  finish in seconds. 60s lets a hung server die fast so the agent
+  moves on. Configurable per-call via `{"timeout": N}` (clamped 1–600).
+* **Tool description now warns about backgrounding servers.** The
+  model sees: "DO NOT run long-running servers in the foreground —
+  they will block until the timeout fires. Background them: on
+  Windows `start /b python app.py`, on POSIX
+  `nohup python app.py >server.log 2>&1 &`. After starting a server,
+  stop calling tools and tell the user the URL."
+* **Server-start detector + hint** — when `_looks_like_server_start`
+  matches the command (python script, flask run, uvicorn, gunicorn,
+  npm/pnpm/yarn start/run/dev, node script, next dev/start, rails
+  server) AND the call hits the wall-clock cap, the JSON result
+  grows a `hint` field with the same backgrounding guidance, so the
+  model corrects on retry.
+* **`SandboxTimeoutError` → JSON result**, no longer a turn-killing
+  exception. The fabricated result has `exit_code: -1`, the timeout
+  message in stderr, and the server hint when applicable. The agent
+  loop continues normally instead of bubbling out.
+* **`run_bash` empty `command` returns hint JSON** (parity with the
+  v1.1.10 file-tool fix), instead of raising PhantomError.
+
+### Tests
+
+* 26 new in `phantom/tests/test_run_bash_timeout.py`: parametrised
+  positive table for `_looks_like_server_start` (python app.py,
+  flask run, uvicorn, gunicorn, npm/pnpm/yarn start/run/dev, node
+  *.js, next dev/start, rails server), negative table (python
+  --version, pip install, ls, mkdir, python -c one-liner),
+  default-timeout sanity, clamping, empty-command JSON hint,
+  server-hint appears on timeout, no-hint for normal commands,
+  tool schema reflects the new defaults + warning.
+* Suite: 2410 passed, 0 failed.
+
+---
+
 ## [1.1.17] — 2026-05-09 — /preset + /voice + /dashboard + /doctor + /plugins
 
 Patch release. Triggered by the v1.1.16 user report: "I don't see any
