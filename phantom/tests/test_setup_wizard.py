@@ -87,59 +87,97 @@ def test_load_repairs_dangling_default_pointer(home: Path, tmp_path: Path):
     assert reg.default_name == ""
 
 
-# ─── setup_wizard.run_wizard ─────────────────────────────────────────────────
+# ─── setup_wizard.run_wizard (3-prompt custom flow) ──────────────────────────
 
-def test_wizard_picks_preset_by_number_and_saves_default(home: Path):
-    from phantom.cli.setup_wizard import _ordered_presets, run_wizard
-    presets = _ordered_presets()
-    nvidia_idx = next(i for i, p in enumerate(presets, start=1) if p.name == "nvidia")
+def test_wizard_three_prompts_save_provider(home: Path):
+    from phantom.cli.setup_wizard import run_wizard
     inputs, _outputs, read_line, write = _scripted_io()
-    inputs.extend([str(nvidia_idx), "fake-key", ""])  # pick, key, keep-default-model
+    inputs.extend([
+        "https://integrate.api.nvidia.com/v1",
+        "meta/llama-3.3-70b-instruct",
+        "nv-secret",
+    ])
     result = run_wizard(read_line=read_line, write=write)
     assert not result.cancelled
-    assert result.provider.name == "nvidia"
+    p = result.provider
+    assert p.base_url == "https://integrate.api.nvidia.com/v1"
+    assert p.model == "meta/llama-3.3-70b-instruct"
+    assert p.api_key_inline == "nv-secret"
     again = ProviderRegistry.load()
-    assert again.default_name == "nvidia"
-    assert again.get("nvidia").api_key_inline == "fake-key"
+    assert again.default_name == p.name
+    assert again.get(p.name) == p
 
 
-def test_wizard_picks_preset_by_name(home: Path):
+def test_wizard_blank_base_url_cancels(home: Path):
     from phantom.cli.setup_wizard import run_wizard
     inputs, _outputs, read_line, write = _scripted_io()
-    inputs.extend(["groq", "g-key", ""])
-    result = run_wizard(read_line=read_line, write=write)
-    assert not result.cancelled
-    assert result.provider.name == "groq"
-
-
-def test_wizard_cancel_returns_cancelled(home: Path):
-    from phantom.cli.setup_wizard import run_wizard
-    inputs, _outputs, read_line, write = _scripted_io()
-    inputs.append("q")
+    inputs.append("")  # blank base URL → cancel
     result = run_wizard(read_line=read_line, write=write)
     assert result.cancelled
-    assert result.provider is None
-    # Nothing saved.
     assert ProviderRegistry.load().default_name == ""
 
 
-def test_wizard_local_preset_does_not_require_key(home: Path):
+def test_wizard_rejects_non_http_base_url(home: Path):
     from phantom.cli.setup_wizard import run_wizard
     inputs, _outputs, read_line, write = _scripted_io()
-    inputs.extend(["ollama", ""])  # name, then keep-default-model — no key prompt
+    inputs.append("ftp://x")
     result = run_wizard(read_line=read_line, write=write)
-    assert not result.cancelled
-    assert result.provider.name == "ollama"
+    assert result.cancelled
+    assert ProviderRegistry.load().default_name == ""
 
 
-def test_wizard_custom_provider(home: Path):
+def test_wizard_blank_model_cancels(home: Path):
     from phantom.cli.setup_wizard import run_wizard
     inputs, _outputs, read_line, write = _scripted_io()
-    inputs.extend(["custom", "myhost", "https://my.host/v1", "my-model", "k123"])
+    inputs.extend(["https://x.test/v1", ""])
+    result = run_wizard(read_line=read_line, write=write)
+    assert result.cancelled
+    assert ProviderRegistry.load().default_name == ""
+
+
+def test_wizard_blank_key_is_allowed_for_local_endpoints(home: Path):
+    from phantom.cli.setup_wizard import run_wizard
+    inputs, _outputs, read_line, write = _scripted_io()
+    inputs.extend(["http://localhost:11434/v1", "llama3.3", ""])
     result = run_wizard(read_line=read_line, write=write)
     assert not result.cancelled
-    assert result.provider.name == "myhost"
-    assert ProviderRegistry.load().default_name == "myhost"
+    assert result.provider.api_key_inline == ""
+
+
+def test_wizard_derives_name_from_hostname(home: Path):
+    from phantom.cli.setup_wizard import run_wizard
+    inputs, _outputs, read_line, write = _scripted_io()
+    inputs.extend(["https://api.together.xyz/v1", "m", "k"])
+    result = run_wizard(read_line=read_line, write=write)
+    assert not result.cancelled
+    assert result.provider.name == "together"
+
+
+def test_wizard_appends_suffix_when_name_taken(home: Path):
+    """If `together` already exists, the wizard saves the new entry as
+    `together-2` (and so on) rather than overwriting silently."""
+    from phantom.cli.setup_wizard import run_wizard
+    reg = ProviderRegistry.load()
+    reg.add(CustomProvider(name="together", base_url="https://a.test", model="x"))
+    inputs, _outputs, read_line, write = _scripted_io()
+    inputs.extend(["https://api.together.xyz/v1", "m", "k"])
+    result = run_wizard(read_line=read_line, write=write)
+    assert not result.cancelled
+    assert result.provider.name == "together-2"
+
+
+# ─── derive_name unit ────────────────────────────────────────────────────────
+
+def test_derive_name_known_hosts(home: Path):
+    from phantom.cli.setup_wizard import derive_name
+    reg = ProviderRegistry.load()
+    assert derive_name("https://api.together.xyz/v1", reg) == "together"
+    assert derive_name("https://integrate.api.nvidia.com/v1", reg) == "nvidia"
+    assert derive_name("https://api.groq.com/openai/v1", reg) == "groq"
+    assert derive_name("https://models.github.ai/inference", reg) == "github"
+    assert derive_name("https://api.openai.com/v1", reg) == "openai"
+    assert derive_name("http://localhost:11434/v1", reg) == "localhost"
+    assert derive_name("not-a-url", reg) == "default"
 
 
 # ─── resolve_chat_config ─────────────────────────────────────────────────────

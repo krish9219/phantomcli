@@ -1,26 +1,36 @@
 """First-run setup wizard for ``phantom chat``.
 
-When the user runs ``phantom chat`` (or any flow that needs a provider)
-without ``--base-url`` / ``--model`` / matching env vars and with no
-default provider already saved, we drop into this wizard. It lists all
-presets, asks the user to pick one, asks for an API key (or reuses the
-preset's env var), and saves the choice as the default provider.
+The wizard is a direct 3-prompt flow: paste a base URL, model id, and
+API key for any OpenAI-compatible endpoint. Phantom doesn't ship a
+default provider — every install picks its own — and once you've
+configured one, subsequent ``phantom chat`` runs skip the wizard.
 
-No baked-in defaults: every install picks its own. Subsequent runs of
-``phantom chat`` skip the wizard and go straight to the saved default.
+Examples of OpenAI-compatible endpoints that work here:
+
+* NVIDIA NIM     → ``https://integrate.api.nvidia.com/v1``
+* Groq           → ``https://api.groq.com/openai/v1``
+* OpenRouter     → ``https://openrouter.ai/api/v1``
+* Together       → ``https://api.together.xyz/v1``
+* Fireworks      → ``https://api.fireworks.ai/inference/v1``
+* GitHub Models  → ``https://models.github.ai/inference``
+* Ollama         → ``http://localhost:11434/v1``  (local, no key)
+* vLLM / LM Studio → any ``http://…/v1`` you serve
+
+For one-line shortcuts to popular providers see
+``phantom config provider preset <name>``.
 """
 
 from __future__ import annotations
 
-import os
+import re
 import sys
 from dataclasses import dataclass
 from typing import Callable
+from urllib.parse import urlparse
 
-from phantom.config.presets import PRESETS, Preset
 from phantom.config.providers import CustomProvider, ProviderRegistry
 
-__all__ = ["WizardResult", "run_wizard", "should_run_wizard"]
+__all__ = ["WizardResult", "run_wizard", "should_run_wizard", "derive_name"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,24 +40,44 @@ class WizardResult:
     cancelled: bool = False
 
 
-# Presets ordered so free + popular options come first.
-_ORDERED = [
-    "nvidia", "groq", "openrouter", "github", "deepseek",
-    "together", "fireworks", "mistral", "cerebras", "perplexity",
-    "deepinfra", "xai", "ollama", "lmstudio", "vllm-local",
-]
+_NAME_OK = re.compile(r"^[a-z][a-z0-9_-]{0,30}[a-z0-9]?$")
 
 
-def _ordered_presets() -> list[Preset]:
-    by_name = {p.name: p for p in PRESETS}
-    out: list[Preset] = []
-    for n in _ORDERED:
-        if n in by_name:
-            out.append(by_name[n])
-    for p in PRESETS:
-        if p.name not in _ORDERED:
-            out.append(p)
-    return out
+def derive_name(base_url: str, registry: ProviderRegistry) -> str:
+    """Best-effort default name from the base URL's host.
+
+    Picks the registered-domain label (second-to-last for multi-label hosts):
+
+    * ``integrate.api.nvidia.com``  → ``nvidia``
+    * ``api.together.xyz``          → ``together``
+    * ``models.github.ai``          → ``github``
+    * ``localhost``                 → ``localhost``
+    * unparseable URL               → ``default``
+
+    Appends ``-2``, ``-3`` etc. if the candidate is already in the registry.
+    """
+    host = (urlparse(base_url).hostname or "").lower()
+
+    candidate = "default"
+    if host:
+        labels = host.split(".")
+        if len(labels) == 1:
+            candidate = labels[0]
+        elif len(labels) >= 2:
+            candidate = labels[-2]
+        cleaned = re.sub(r"[^a-z0-9_-]", "-", candidate).strip("-")
+        if cleaned and _NAME_OK.match(cleaned):
+            candidate = cleaned
+        else:
+            candidate = "default"
+
+    if registry.get(candidate) is None:
+        return candidate
+    for n in range(2, 100):
+        suffix = f"{candidate}-{n}"
+        if registry.get(suffix) is None:
+            return suffix
+    return candidate
 
 
 def should_run_wizard(
@@ -72,10 +102,10 @@ def run_wizard(
     write: Callable[[str], None] | None = None,
     registry: ProviderRegistry | None = None,
 ) -> WizardResult:
-    """Drive the picker. Returns the saved CustomProvider or cancelled.
+    """Drive the 3-prompt setup. Returns the saved CustomProvider or cancelled.
 
-    ``read_line`` and ``write`` default to the standard streams; tests
-    pass deterministic substitutes.
+    ``read_line`` and ``write`` default to the standard streams; tests pass
+    deterministic substitutes.
     """
     if read_line is None:
         def _r(prompt: str) -> str:
@@ -90,126 +120,57 @@ def run_wizard(
     if registry is None:
         registry = ProviderRegistry.load()
 
-    presets = _ordered_presets()
-
     write("\n  Phantom — first-run setup\n")
     write("  ─────────────────────────\n")
-    write("  Pick a provider for `phantom chat`. You can change this later with\n")
-    write("  `phantom config provider use <name>` or add more with\n")
-    write("  `phantom config provider preset <name>`.\n\n")
-    for i, p in enumerate(presets, start=1):
-        free_hint = ""
-        if p.name in ("ollama", "lmstudio", "vllm-local"):
-            free_hint = "  (local, no key)"
-        elif p.name in ("nvidia", "groq", "github", "openrouter"):
-            free_hint = "  (free tier)"
-        write(f"   {i:>2}) {p.name:<11} {p.model:<48}{free_hint}\n")
-    custom_idx = len(presets) + 1
-    write(f"   {custom_idx:>2}) custom      any OpenAI-compatible base URL\n")
-    write("    q) cancel\n\n")
+    write("  Phantom works with any OpenAI-compatible endpoint.\n")
+    write("  Examples: NVIDIA NIM, Groq, OpenRouter, Together, Fireworks,\n")
+    write("            GitHub Models, Ollama, vLLM, LM Studio.\n")
+    write("  Tip: for one-line shortcuts run `phantom config provider preset <name>`.\n")
+    write("  Press Ctrl+C or leave the base URL blank to cancel.\n\n")
 
-    choice = read_line("  pick> ").strip().lower()
-    if choice in {"", "q", "quit", "exit", "cancel"}:
+    try:
+        base_url = read_line("  base URL (https://…/v1)> ").strip()
+    except (EOFError, KeyboardInterrupt):
+        write("\n  (cancelled)\n")
+        return WizardResult(provider=None, cancelled=True)
+    if not base_url:
         write("  (cancelled)\n")
         return WizardResult(provider=None, cancelled=True)
-
-    if choice == "custom" or (choice.isdigit() and int(choice) == custom_idx):
-        return _wizard_custom(read_line, write, registry)
-
-    if not choice.isdigit():
-        for p in presets:
-            if p.name == choice:
-                return _wizard_preset(p, read_line, write, registry)
-        write(f"  unknown choice {choice!r}\n")
+    if not base_url.startswith(("http://", "https://")):
+        write(f"  base URL must start with http:// or https://, got: {base_url!r}\n")
         return WizardResult(provider=None, cancelled=True)
 
-    idx = int(choice)
-    if not 1 <= idx <= len(presets):
-        write(f"  out of range: {idx}\n")
-        return WizardResult(provider=None, cancelled=True)
-
-    return _wizard_preset(presets[idx - 1], read_line, write, registry)
-
-
-def _wizard_preset(
-    preset: Preset,
-    read_line: Callable[[str], str],
-    write: Callable[[str], None],
-    registry: ProviderRegistry,
-) -> WizardResult:
-    write(f"\n  {preset.name} → {preset.base_url}\n")
-    write(f"  default model: {preset.model}\n")
-    if preset.homepage:
-        write(f"  homepage:      {preset.homepage}\n")
-
-    api_key_env = preset.api_key_env
-    api_key_inline = ""
-
-    needs_key = preset.name not in ("ollama", "lmstudio", "vllm-local")
-    if needs_key:
-        existing = os.environ.get(api_key_env, "")
-        if existing:
-            write(f"  using {api_key_env} from environment.\n")
-        else:
-            write(f"  paste your API key (or press Enter to set ${api_key_env} later):\n")
-            try:
-                key = read_line("  key> ").strip()
-            except EOFError:
-                key = ""
-            if key:
-                api_key_inline = key
-
-    model = preset.model
-    custom_model = read_line(
-        f"  model [{preset.model}] (Enter to keep): "
-    ).strip()
-    if custom_model:
-        model = custom_model
-
-    provider = CustomProvider(
-        name=preset.name,
-        base_url=preset.base_url,
-        model=model,
-        api_key_env=api_key_env,
-        api_key_inline=api_key_inline,
-    )
     try:
-        registry.add(provider, overwrite=True)
-        registry.set_default(preset.name)
-    except ValueError as e:
-        write(f"  failed: {e}\n")
+        model = read_line("  model id (e.g. gpt-4o, meta/llama-3.3-70b-instruct)> ").strip()
+    except (EOFError, KeyboardInterrupt):
+        write("\n  (cancelled)\n")
+        return WizardResult(provider=None, cancelled=True)
+    if not model:
+        write("  model id is required.\n")
         return WizardResult(provider=None, cancelled=True)
 
-    write(f"\n  saved as default: {preset.name}\n")
-    if needs_key and not api_key_inline and not os.environ.get(api_key_env, ""):
-        write(f"  reminder: export {api_key_env}=<your key> before chatting.\n")
-    return WizardResult(provider=provider)
-
-
-def _wizard_custom(
-    read_line: Callable[[str], str],
-    write: Callable[[str], None],
-    registry: ProviderRegistry,
-) -> WizardResult:
-    write("\n  custom OpenAI-compatible provider\n")
-    name = read_line("  short name (a-z, dashes ok): ").strip().lower()
-    base_url = read_line("  base URL (https://…): ").strip()
-    model = read_line("  model id: ").strip()
-    write("  paste an API key (Enter to skip — local endpoints don't need one):\n")
+    write("  API key (Enter to skip — local endpoints like Ollama/vLLM don't need one):\n")
     try:
-        key = read_line("  key> ").strip()
-    except EOFError:
-        key = ""
+        api_key = read_line("  key> ").strip()
+    except (EOFError, KeyboardInterrupt):
+        api_key = ""
 
+    name = derive_name(base_url, registry)
     try:
         provider = CustomProvider(
-            name=name, base_url=base_url, model=model, api_key_inline=key,
+            name=name,
+            base_url=base_url,
+            model=model,
+            api_key_inline=api_key,
         )
-        registry.add(provider, overwrite=True)
+        registry.add(provider, overwrite=False)
         registry.set_default(name)
     except ValueError as e:
         write(f"  failed: {e}\n")
         return WizardResult(provider=None, cancelled=True)
 
-    write(f"\n  saved as default: {name}\n")
+    write(f"\n  saved as default provider: {name}\n")
+    write(f"  endpoint: {base_url}\n")
+    write(f"  model:    {model}\n")
+    write("  change later with: phantom config provider use <name>\n")
     return WizardResult(provider=provider)

@@ -13,6 +13,48 @@ The major version cadence:
 
 ---
 
+## [1.1.6] — 2026-05-09 — Wizard simplified to direct 3-prompt custom flow
+
+Patch release. Replaces the 16-line preset menu with a direct
+3-prompt flow (base URL, model, API key) so the wizard works for any
+OpenAI-compatible endpoint without forcing the user to scan a list.
+
+### Changed
+
+* **First-run wizard** now prompts directly for base URL, model id,
+  and API key — no preset picker. Phantom works with any OpenAI-
+  compatible endpoint, so the wizard reflects that.
+* The wizard auto-derives the provider name from the registered
+  domain (`integrate.api.nvidia.com` → `nvidia`,
+  `api.together.xyz` → `together`, `models.github.ai` → `github`,
+  `localhost` → `localhost`). If the derived name is taken, appends
+  `-2`, `-3` etc. so re-running never silently overwrites.
+* Wizard bails on a blank base URL, a non-http(s) scheme, or a blank
+  model id. The API key prompt accepts blank input (for local
+  endpoints like Ollama / vLLM that don't need a key).
+
+### Kept
+
+* `phantom config provider preset <name>` — one-line shortcuts to
+  curated providers (nvidia, groq, openrouter, together, fireworks,
+  mistral, cerebras, deepseek, perplexity, deepinfra, xai, ollama,
+  lmstudio, vllm-local, github) — still works exactly as before with
+  interactive key prompting.
+* `phantom config provider custom <name>` — flag-driven manual entry,
+  with prompts when flags are missing (from v1.1.5).
+* `phantom config setup` — direct alias for the wizard.
+
+### Tests
+
+* 8 new in `phantom/tests/test_setup_wizard.py` covering the 3-prompt
+  flow, blank-input cancellation paths, non-http rejection, blank-key
+  acceptance for local endpoints, and the new `derive_name()` helper
+  with a parametrised host table.
+* 1 updated in `test_provider_cmd_interactive.py` to drive the new
+  wizard layout.
+
+---
+
 ## [1.1.5] — 2026-05-09 — Interactive provider config
 
 Patch release. Removes the "now what?" moment after `phantom config

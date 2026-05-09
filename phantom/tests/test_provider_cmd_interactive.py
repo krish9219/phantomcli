@@ -110,8 +110,11 @@ def test_provider_preset_skips_prompt_for_local_only(home):
 
 def test_config_setup_runs_wizard(home):
     runner = CliRunner()
-    # Pick option 1 in the wizard, paste a key, keep default model.
-    result = runner.invoke(app, ["config", "setup"], input="1\nk\n\n")
+    # New 3-prompt flow: base URL, model, API key.
+    result = runner.invoke(
+        app, ["config", "setup"],
+        input="https://api.test/v1\ntest-model\nk\n",
+    )
     assert result.exit_code == 0, result.output
     reg = ProviderRegistry.load()
     assert reg.default_name != ""
@@ -119,6 +122,7 @@ def test_config_setup_runs_wizard(home):
 
 def test_config_setup_cancel_exits_2(home):
     runner = CliRunner()
-    result = runner.invoke(app, ["config", "setup"], input="q\n")
+    # Blank base URL cancels.
+    result = runner.invoke(app, ["config", "setup"], input="\n")
     assert result.exit_code == 2
     assert ProviderRegistry.load().default_name == ""
