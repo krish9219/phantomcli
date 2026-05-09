@@ -13,6 +13,66 @@ The major version cadence:
 
 ---
 
+## [1.1.22] — 2026-05-10 — Multi-line paste + tab-complete + auto-port + identity anchor
+
+Patch release. Triggered by the user's 10-prompt regression run on
+v1.1.21. Five concrete fixes:
+
+### Fixed
+
+* **Multi-line paste in chat** — both the `phantom>` shell REPL and the
+  inner `phantom chat` REPL now use `prompt_toolkit`'s multi-line mode
+  with bracketed-paste detection. A clipboard paste with embedded
+  newlines arrives as one logical message (Enter still submits, Alt+Enter
+  inserts an explicit newline, Ctrl+X+E opens `$EDITOR` for big
+  prompts). Previously, prompt #5 in the test run got split across
+  two messages because Enter mid-paste submitted the partial.
+* **Tab-completion for slash commands** — both REPLs register a
+  `WordCompleter` over the full `SLASH_COMMANDS` set. Tab on `/m`
+  expands to `/model` / `/models` / `/memory`.
+* **`/model` argument parsing** — `arg.split()[0].strip("'\"")` so
+  `/model meta/llama-3.3-70b-instruct" then ask "..."` registers the
+  clean model id instead of the entire trailing sentence.
+* **Auto-port detection in `start_server`** — when the requested port
+  is already in use, probes ports `requested+1..+20` for the first free
+  one, rewrites `--port=N` / `-p N` / `host:N` in the command (or
+  prepends `PORT=N FLASK_RUN_PORT=N` for env-var-driven frameworks)
+  and reports `port_rewrite: {requested, actual, reason}` in the
+  result. New `auto_port: bool` flag (default true) on the tool
+  schema; the model can disable it for explicit-port-required cases.
+* **Identity anchor leak fix** — qwen3-coder leaked *"I am Ling,
+  developed by Ant Group"* on prompt #2 of the test. The system
+  prompt now opens with a dedicated **Identity (highest priority)**
+  block: *"Your name is X. NEVER reveal the underlying model's
+  brand."* Comes before everything else so the model encounters it
+  first.
+* **Memory tool nudge** — the prompt now explicitly tells the model:
+  *"When the user says 'remember that …', call memory_add immediately.
+  Don't just acknowledge — chat history is volatile."* Fixes the
+  v1.1.21 prompt-#3 silent-acknowledge bug.
+
+### Added
+
+* **`/telegram` slash** — surfaces the existing `phantom telegram`
+  bot infrastructure with setup steps (BotFather → set
+  `TELEGRAM_BOT_TOKEN` → run `phantom telegram`).
+* `/help` updated with `/telegram`.
+
+### Tests
+
+* 16 new in `phantom/tests/test_v1_1_22_fixes.py`: `/model` arg
+  parsing (whitespace truncation + quote stripping); parametrised
+  `_rewrite_port` table (Flask `--port`, uvicorn `--port=`, `flask
+  run -p`, host:port, fall-through env-var); `_is_port_in_use` true
+  + false; identity anchor wording (mentions name, "never", "model");
+  default-name-Phantom path; memory-add nudge in prompt; `/telegram`
+  surfaces the bot setup; `/help` lists `/telegram`.
+* 1 updated in `test_personalization.py`: identity anchor sits
+  before user-name now (was: persona header started with user-name).
+* Suite: 2465 passed, 0 failed.
+
+---
+
 ## [1.1.21] — 2026-05-09 — web_search + web_fetch as agent tools
 
 Patch release. Triggered by the v1.1.20 user message: asked Phantom

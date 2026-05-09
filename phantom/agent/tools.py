@@ -70,9 +70,24 @@ def _start_server(args: dict[str, Any], *, workdir: str) -> str:
                 '{"command": "python app.py", "port": 5000}.'
             ),
         })
-    port = int(args.get("port", 0)) or _guess_port(cmd) or 5000
+    requested_port = int(args.get("port", 0)) or _guess_port(cmd) or 5000
+    auto_port = bool(args.get("auto_port", True))
     wait_s = float(args.get("wait_s", 3.0))
     wait_s = max(0.0, min(wait_s, 30.0))
+
+    # Auto-port: if the requested port is already taken, try requested+1..+20
+    # and rewrite the command to use the first free one. Only does this when
+    # the model passed --port / -p / FLASK_RUN_PORT-style args we can rewrite.
+    port = requested_port
+    port_rewrite = None
+    if auto_port and _is_port_in_use(port):
+        for candidate in range(requested_port + 1, requested_port + 21):
+            if not _is_port_in_use(candidate):
+                port = candidate
+                port_rewrite = (requested_port, candidate)
+                break
+    if port_rewrite is not None:
+        cmd = _rewrite_port(cmd, port_rewrite[0], port_rewrite[1], port_rewrite[1])
 
     _os.makedirs(workdir, exist_ok=True)
     log_path = _os.path.join(workdir, ".phantom_server.log")
@@ -126,6 +141,15 @@ def _start_server(args: dict[str, Any], *, workdir: str) -> str:
         "listening": listening,
         "alive": proc.poll() is None,
     }
+    if port_rewrite is not None:
+        summary["port_rewrite"] = {
+            "requested": port_rewrite[0],
+            "actual": port_rewrite[1],
+            "reason": (
+                f"port {port_rewrite[0]} was already in use; auto-bumped "
+                f"to {port_rewrite[1]}. Tell the user the new URL."
+            ),
+        }
     if not summary["alive"]:
         summary["exit_code"] = proc.returncode
         summary["hint"] = (
@@ -149,6 +173,42 @@ def _start_server(args: dict[str, Any], *, workdir: str) -> str:
             f"(Windows) or `kill {proc.pid}` (POSIX)."
         )
     return json.dumps(summary)
+
+
+def _is_port_in_use(port: int) -> bool:
+    """True if something is listening on 127.0.0.1:port."""
+    import socket as _socket
+    try:
+        with _socket.create_connection(("127.0.0.1", port), timeout=0.3):
+            return True
+    except (OSError, _socket.timeout):
+        return False
+
+
+def _rewrite_port(cmd: str, old: int, new: int, env_port: int) -> str:
+    """Replace --port=N / -p N / :N occurrences of *old* with *new*. If
+    no port flag is found, prepend FLASK_RUN_PORT / PORT env var assignment
+    (cmd.exe and /bin/sh both honour `set NAME=VAL && CMD` and `NAME=VAL CMD`
+    respectively, so we use a portable wrapper)."""
+    import re as _re
+    rewrote = False
+    for pattern, replace in [
+        (rf"--port[= ]+{old}\b", f"--port={new}"),
+        (rf"\s-p[= ]+{old}\b", f" -p {new}"),
+        (rf":{old}\b", f":{new}"),
+    ]:
+        new_cmd, n = _re.subn(pattern, replace, cmd)
+        if n:
+            cmd = new_cmd
+            rewrote = True
+    if rewrote:
+        return cmd
+    # Fall through: prepend an env-var hint that Flask + Django + most
+    # frameworks honour. Works on cmd.exe and POSIX sh alike.
+    import platform as _platform
+    if _platform.system() == "Windows":
+        return f"set FLASK_RUN_PORT={env_port}&& set PORT={env_port}&& {cmd}"
+    return f"FLASK_RUN_PORT={env_port} PORT={env_port} {cmd}"
 
 
 def _guess_port(cmd: str) -> int:
@@ -478,6 +538,15 @@ def default_tools(
                             "returning. Default 3, max 30."
                         ),
                         "default": 3,
+                    },
+                    "auto_port": {
+                        "type": "boolean",
+                        "description": (
+                            "If the requested port is already in use, try "
+                            "the next 20 ports (requested+1..+20) and start "
+                            "there instead. Default true."
+                        ),
+                        "default": True,
                     },
                 },
                 "required": ["command"],

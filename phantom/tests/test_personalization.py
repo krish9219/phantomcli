@@ -47,10 +47,17 @@ def test_personalize_keeps_phantom_when_user_kept_default():
 
 
 def test_personalize_prepends_user_name_header():
+    """v1.1.22: identity anchor is now first (must override model brand
+    identity), so we look for the user-name line anywhere in the header,
+    not at the very start."""
     prompt = "You are Phantom, a local coding agent."
     profile = Profile(user_name="Aravind", assistant_name="Ghost", workspace_path="")
     out = _personalize_system_prompt(prompt, profile)
-    assert out.startswith("The user's name is Aravind")
+    assert "The user's name is Aravind" in out
+    # Identity anchor sits before user-name now.
+    identity_idx = out.find("Your name is Ghost")
+    user_idx = out.find("The user's name is Aravind")
+    assert 0 <= identity_idx < user_idx
 
 
 def test_personalize_prepends_workspace_when_set():

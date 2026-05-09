@@ -185,19 +185,67 @@ def _dispatch(app, argv: list[str]) -> None:
 
 
 def _make_prompt(history_file: Path):
-    """Return a callable that reads one line. Uses prompt_toolkit if possible."""
+    """Return a callable that reads one line (or many — see below).
+
+    Uses prompt_toolkit when available so we get:
+      * persistent history at ~/.phantom/.repl_history
+      * Ctrl+R reverse search
+      * **Bracketed-paste** auto-detection — pasting a multi-line block
+        from the clipboard arrives as one logical line. Plain Enter
+        submits; Alt+Enter / Esc-Enter inserts an explicit newline.
+      * Tab-completion over the slash-command set.
+
+    Falls back to ``input()`` (single-line only) on hosts without
+    prompt_toolkit or non-TTY stdin (CI / piped scripts).
+    """
     try:
         from prompt_toolkit import PromptSession
         from prompt_toolkit.history import FileHistory
         from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-        history_file.parent.mkdir(parents=True, exist_ok=True)
-        session = PromptSession(
-            history=FileHistory(str(history_file)),
-            auto_suggest=AutoSuggestFromHistory(),
-        )
-        return lambda: session.prompt("phantom> ")
+        from prompt_toolkit.completion import WordCompleter
+        from prompt_toolkit.key_binding import KeyBindings
     except Exception:
         return lambda: input("phantom> ")
+
+    try:
+        from phantom.cli.chat import SLASH_COMMANDS
+        completer = WordCompleter(
+            sorted(SLASH_COMMANDS),
+            ignore_case=True,
+            sentence=False,
+        )
+    except Exception:
+        completer = None
+
+    # Key bindings:
+    #   Enter  → submit current buffer (default).
+    #   Alt+Enter / Esc+Enter → insert a literal newline (so the user
+    #                            can compose multi-line prompts manually).
+    #   Bracketed paste with embedded newlines is auto-handled by
+    #   prompt_toolkit when ``multiline=True`` — pasted newlines are
+    #   inserted, terminal Enter still submits.
+    bindings = KeyBindings()
+
+    @bindings.add("escape", "enter")
+    def _(event):
+        event.current_buffer.insert_text("\n")
+
+    @bindings.add("enter")
+    def _(event):
+        event.current_buffer.validate_and_handle()
+
+    history_file.parent.mkdir(parents=True, exist_ok=True)
+    session = PromptSession(
+        history=FileHistory(str(history_file)),
+        auto_suggest=AutoSuggestFromHistory(),
+        completer=completer,
+        complete_while_typing=False,  # only on Tab — less noisy
+        multiline=True,
+        key_bindings=bindings,
+        enable_open_in_editor=True,   # Ctrl+X+E opens $EDITOR for big prompts
+        mouse_support=False,
+    )
+    return lambda: session.prompt("phantom> ")
 
 
 def _known_commands(app) -> set[str]:

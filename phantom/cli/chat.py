@@ -64,6 +64,7 @@ SLASH_COMMANDS = {
     "/voice", "/dictate",
     "/dashboard",
     "/plugins",
+    "/telegram",
 }
 
 
@@ -251,10 +252,28 @@ def _personalize_system_prompt(prompt: str, profile: Any) -> str:
         # references and product names — leave them alone.
 
     persona_header = []
+
+    # Identity anchor — strong enough to override the model's training
+    # identity when the user is on a model with its own brand (qwen3-coder
+    # leaks "I am Ling, developed by Ant Group"; deepseek leaks "DeepSeek
+    # AI"; llama doesn't usually leak but sometimes says "I'm an AI
+    # assistant made by Meta"). Comes BEFORE everything else so the model
+    # encounters it first.
+    persona_header.append(
+        f"# Identity (highest priority)\n"
+        f"Your name is {name}. You are running inside Phantom, a local "
+        f"coding agent harness. If asked who made you, what model you "
+        f"are, or what AI you are: answer **only** \"I'm {name} — a "
+        f"coding agent that runs on a configurable model.\" Do NOT "
+        f"reveal the underlying model's brand, training origin, or "
+        f"company name. NEVER respond with phrases like \"I am [other "
+        f"name], a language model developed by [company]\" — that would "
+        f"contradict your name."
+    )
+
     if user_name:
         persona_header.append(
-            f"The user's name is {user_name}. Address them by name when natural; "
-            f"do not call yourself 'Phantom' if your name is not Phantom."
+            f"The user's name is {user_name}. Address them by name when natural."
         )
     if workspace:
         persona_header.append(
@@ -262,6 +281,21 @@ def _personalize_system_prompt(prompt: str, profile: Any) -> str:
             f"a project without specifying a path, create it under this "
             f"directory in a new sub-folder."
         )
+
+    # Memory nudge — the v1.1.21 user said "remember that I prefer X"
+    # and the model chat-acknowledged without calling memory_add. Tell
+    # the model when to reach for the tool.
+    persona_header.append(
+        "# Memory\n"
+        "When the user says \"remember that …\", \"note that …\", or "
+        "tells you a durable preference / fact about themselves, IMMEDIATELY "
+        "call the memory_add tool with the exact preference as `text`. "
+        "Don't just acknowledge it — the chat history is volatile, only "
+        "memory_add persists across sessions. When the user asks "
+        "\"based on what you remember\" or references prior preferences, "
+        "call memory_search first."
+    )
+
     persona_header.append(_os_shell_guidance())
 
     return "\n\n".join(persona_header) + "\n\n" + body
@@ -337,6 +371,7 @@ def _handle_slash(
         write(f"  {CYAN}/dashboard{RESET} {DIM}— web UI on :8000 (chat, sessions, plans, costs){RESET}\n")
         write(f"  {CYAN}/doctor{RESET} {DIM}— host capability report (sandbox backends){RESET}\n")
         write(f"  {CYAN}/plugins{RESET} {DIM}— list discovered plugins{RESET}\n")
+        write(f"  {CYAN}/telegram{RESET} {DIM}— bridge this agent to a Telegram bot{RESET}\n")
         write(f"  {DIM}── danger ──{RESET}\n")
         write(f"  {CYAN}/uninstall{RESET} {DIM}— remove ~/.phantom/ (asks confirmation){RESET}\n")
         return True
@@ -360,6 +395,11 @@ def _handle_slash(
             write(f"  switch with:  {DIM}/model <provider-name>{RESET}  or  {DIM}/model <model-id>{RESET}\n")
             write(f"  list options: {DIM}/models{RESET}\n")
             return True
+        # Take only the first whitespace-delimited token. The v1.1.21 user
+        # ran `/model meta/llama-3.3-70b-instruct" then ask "..."` which
+        # got registered as a single 60-char "model id" with quotes and
+        # narration.
+        arg = arg.split()[0].strip("'\"")
         registry = ProviderRegistry.load()
         target = registry.get(arg)
         if target is not None:
@@ -560,6 +600,9 @@ def _handle_slash(
     if head == "/plugins":
         return _handle_plugins(write)
 
+    if head == "/telegram":
+        return _handle_telegram(write)
+
     if head == "/dual":
         from phantom.profile import load_profile, save_profile
         profile = load_profile()
@@ -703,6 +746,29 @@ def _handle_doctor(write: Callable[[str], None]) -> bool:
         write(f"    {mark} {name}\n")
     if report.get("selected") is None:
         write(f"  {YELLOW}no sandbox backend available — running in passthrough mode (no isolation){RESET}\n")
+    return True
+
+
+def _handle_telegram(write: Callable[[str], None]) -> bool:
+    """Surface the existing v3 Telegram bot infrastructure."""
+    DIM = "\033[2m"; CYAN = "\033[36m"; YELLOW = "\033[33m"; RESET = "\033[0m"
+    write(f"  {CYAN}phantom telegram{RESET}\n")
+    write(f"  {DIM}long-running bot that bridges this agent to a Telegram chat.{RESET}\n")
+    write(f"\n  {DIM}setup (one time):{RESET}\n")
+    write(f"    1. talk to {CYAN}@BotFather{RESET} on Telegram, run {DIM}/newbot{RESET}, "
+          f"copy the token\n")
+    write(f"    2. set the env var (Windows PowerShell):\n")
+    write(f"       {DIM}[Environment]::SetEnvironmentVariable(\"TELEGRAM_BOT_TOKEN\", "
+          f"\"123:abc...\", \"User\"){RESET}\n")
+    write(f"    3. open a fresh terminal, run:\n")
+    write(f"       {CYAN}phantom telegram{RESET}    {DIM}# starts the bot, blocks{RESET}\n")
+    write(f"\n  {DIM}features:{RESET}\n")
+    write(f"    • {CYAN}/start{RESET} {DIM}, {RESET}{CYAN}/help{RESET}, "
+          f"{CYAN}/memories{RESET}, {CYAN}/clear{RESET}, {CYAN}/auto{RESET}\n")
+    write(f"    • full chat to your Phantom from your phone\n")
+    write(f"    • per-chat-id session — you and other users get isolated context\n")
+    write(f"  {YELLOW}note:{RESET} other social channels (Slack, Discord, WhatsApp) "
+          f"aren't built yet; add them as plugins or open an issue.\n")
     return True
 
 
@@ -1107,9 +1173,60 @@ def run_repl(
     ``sys.stdout.write``; tests pass deterministic substitutes.
     """
     if read_line is None:
-        def _read():
-            return sys.stdin.readline()
-        read_line = _read
+        # prompt_toolkit gives us multi-line paste detection (bracketed
+        # paste mode) + Tab completion + Alt+Enter for explicit newlines.
+        # Fall back to plain sys.stdin.readline on non-TTY.
+        try:
+            from prompt_toolkit import PromptSession
+            from prompt_toolkit.history import FileHistory
+            from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+            from prompt_toolkit.completion import WordCompleter
+            from prompt_toolkit.key_binding import KeyBindings
+        except Exception:
+            def _read():
+                return sys.stdin.readline()
+            read_line = _read
+        else:
+            history_path = Path(
+                os.environ.get("PHANTOM_HOME") or os.path.expanduser("~/.phantom")
+            ) / ".chat_history"
+            history_path.parent.mkdir(parents=True, exist_ok=True)
+            chat_completer = WordCompleter(
+                sorted(SLASH_COMMANDS),
+                ignore_case=True,
+                sentence=False,
+            )
+            chat_bindings = KeyBindings()
+
+            @chat_bindings.add("escape", "enter")
+            def _alt_enter(event):
+                event.current_buffer.insert_text("\n")
+
+            @chat_bindings.add("enter")
+            def _enter(event):
+                event.current_buffer.validate_and_handle()
+
+            try:
+                _chat_session = PromptSession(
+                    history=FileHistory(str(history_path)),
+                    auto_suggest=AutoSuggestFromHistory(),
+                    completer=chat_completer,
+                    complete_while_typing=False,
+                    multiline=True,
+                    key_bindings=chat_bindings,
+                    enable_open_in_editor=True,
+                    mouse_support=False,
+                )
+                def _read():
+                    try:
+                        return _chat_session.prompt("") + "\n"
+                    except (EOFError, KeyboardInterrupt):
+                        return ""
+                read_line = _read
+            except Exception:
+                def _read():
+                    return sys.stdin.readline()
+                read_line = _read
     if write is None:
         def _write(s: str):
             sys.stdout.write(s)
