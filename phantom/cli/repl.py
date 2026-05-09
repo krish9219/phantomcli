@@ -45,10 +45,15 @@ class _ChatBridge:
             err = self._build()
             if err:
                 return "", err
+        from phantom.agent.spinner import PhantomSpinner
+        spinner = PhantomSpinner()
+        spinner.start()
         try:
             reply = self._session.respond_to(prompt)
         except Exception as exc:
+            spinner.stop(mark="✗")
             return "", str(exc)
+        spinner.stop()
         return reply, None
 
     def _build(self) -> str | None:
@@ -86,6 +91,9 @@ class _ChatBridge:
             )
         except Exception as exc:
             return str(exc)
+
+        if hasattr(provider, "set_tools_warning_sink"):
+            provider.set_tools_warning_sink(lambda m: sys.stderr.write(f"{m}\n"))
 
         phantom_home = os.environ.get("PHANTOM_HOME") or os.path.expanduser("~/.phantom")
         memory_path = Path(phantom_home) / "memory.db"

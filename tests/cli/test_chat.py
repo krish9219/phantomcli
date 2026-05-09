@@ -47,7 +47,9 @@ class TestRunRepl:
         )
         assert rc == 0
         joined = "".join(out)
-        assert "phantom> hi back" in joined
+        # The reply line uses a fancier prompt now (cyan/green ›) — assert on
+        # the content, not the literal prompt format.
+        assert "phantom" in joined and "hi back" in joined
 
     def test_eof_returns_zero(self):
         session = _scripted_session([])

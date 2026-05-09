@@ -19,7 +19,7 @@ build-backend = "setuptools.build_meta"
 # ─── Project metadata ─────────────────────────────────────────────────────────
 [project]
 name            = "phantom-cli"
-version         = "1.1.6"
+version         = "1.1.7"
 description     = "Phantom — production-grade local AI agent for terminal, web (PWA), and chat channels."
 readme          = "README.md"
 license         = { text = "Open-Core (MIT core, commercial Pro tier — see LICENSE)" }

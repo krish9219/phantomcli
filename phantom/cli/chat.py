@@ -40,6 +40,7 @@ from phantom.agent import (
     default_tools,
 )
 from phantom.agent.provider import OpenAICompatibleProvider
+from phantom.agent.spinner import PhantomSpinner
 from phantom.config.providers import CustomProvider, ProviderRegistry
 from phantom.errors import PhantomError
 from phantom.memory import MemoryStore
@@ -92,9 +93,21 @@ def run_repl(
             sys.stdout.flush()
         write = _write
 
-    write("Phantom — local AI agent. Type /help for commands, /exit to quit.\n")
+    # Cyan/dim ANSI helpers — same palette as the spinner.
+    CYAN = "\033[36m"
+    DIM = "\033[2m"
+    GREEN = "\033[32m"
+    RESET = "\033[0m"
+
+    # If the underlying provider is OpenAICompatibleProvider, give it a sink
+    # so the user sees inline notice when tools are auto-disabled.
+    provider = getattr(session, "provider", None)
+    if hasattr(provider, "set_tools_warning_sink"):
+        provider.set_tools_warning_sink(lambda msg: write(f"\r{msg}\n"))
+
+    write(f"\n  {CYAN}Phantom{RESET} {DIM}— local AI agent. /help for commands, /exit to quit.{RESET}\n\n")
     while True:
-        write("you> ")
+        write(f"{CYAN}you ›{RESET} ")
         line = read_line()
         if not line:
             # EOF (Ctrl-D / pipe closed): exit gracefully.
@@ -108,20 +121,29 @@ def run_repl(
                 return 0
             if prompt == "/reset":
                 session.history.clear()
-                write("(history cleared)\n")
+                write(f"{DIM}(history cleared){RESET}\n")
                 continue
             if prompt == "/history":
-                write(f"(history length: {len(session.history)})\n")
+                write(f"{DIM}(history length: {len(session.history)}){RESET}\n")
                 continue
             if prompt == "/help":
-                write("Slash commands: " + ", ".join(sorted(SLASH_COMMANDS)) + "\n")
+                write(f"{DIM}slash commands: " + ", ".join(sorted(SLASH_COMMANDS)) + f"{RESET}\n")
                 continue
+
+        spinner = PhantomSpinner()
+        spinner.start()
         try:
             reply = session.respond_to(prompt)
         except PhantomError as exc:
-            write(f"error: {exc.detail or exc}\n")
+            spinner.stop(mark="✗")
+            write(f"{DIM}error:{RESET} {exc.detail or exc}\n")
             continue
-        write(f"phantom> {reply}\n")
+        except Exception as exc:
+            spinner.stop(mark="✗")
+            write(f"{DIM}error:{RESET} {exc}\n")
+            continue
+        spinner.stop()
+        write(f"{GREEN}phantom ›{RESET} {reply}\n\n")
 
 
 def resolve_chat_config(

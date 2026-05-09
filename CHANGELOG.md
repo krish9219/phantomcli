@@ -13,6 +13,53 @@ The major version cadence:
 
 ---
 
+## [1.1.7] — 2026-05-09 — Tools-fallback + thinking spinner
+
+Patch release. Two fixes triggered by the v1.1.6 NVIDIA + minimax test:
+
+1. NVIDIA NIM crashed on `minimaxai/minimax-m2.5` (and other models that
+   don't support tool calling) with a 500 *"Object of type Undefined is
+   not JSON serializable"* whenever Phantom included tool definitions.
+2. The chat REPL was bare — no animation while the model was thinking.
+   v3 / v4.0.10 had the Claude-Code-style Braille spinner; v4 had lost it.
+
+### Added
+
+* **Tools-fallback** on 5xx — when the provider returns 4xx/5xx with a
+  body matching a known "no tool support" pattern (the NVIDIA Undefined
+  error, "tools are not supported", "function calling is not supported",
+  etc.) and tools were in the request, Phantom retries the same request
+  without tools and latches off tool support for the rest of the
+  session. The user sees an inline `⚠ provider … doesn't accept tools`
+  notice.
+* **Pattern matcher** in `phantom.agent.provider._looks_like_tool_rejection`
+  — false positives only cost one harmless retry, true positives keep
+  chat working on tool-less models.
+* **`PhantomSpinner`** in `phantom/agent/spinner.py` — Braille frames,
+  rotating thinking verbs ("Thinking", "Cross-referencing knowledge
+  base", "Phantomizing", "Bending spacetime", …), elapsed time and
+  token estimate, ✓/✗ on success/failure. Auto-disabled on non-TTY
+  streams (CI, pipes) and via `PHANTOM_NO_SPINNER=1`. Context-manager
+  and `with_spinner(fn, ...)` wrapper both supported.
+* **Spinner wired into chat** — both `phantom chat` and the `phantom>`
+  shell's plain-text fall-through wrap the LLM call in a spinner. The
+  user sees `⠋ Thinking… (3s · ↑ 36 tokens)` while waiting.
+* **Fancier prompts** — `you ›` (cyan) and `phantom ›` (green) replace
+  the plain `you>` / `phantom>`.
+
+### Tests
+
+* 10 new in `phantom/tests/test_tools_fallback.py` covering known
+  rejection phrases (parametrised), retry without tools on the exact
+  NVIDIA Undefined error, latch persistence across calls, unrelated
+  5xx not misclassified, no-tools payload not triggering retry,
+  and `tools_supported=False` opt-out at init.
+* 5 new in `phantom/tests/test_spinner.py` covering non-TTY no-op,
+  enabled-stream summary line, return-value propagation, exception
+  propagation, ✗ mark on failure.
+
+---
+
 ## [1.1.6] — 2026-05-09 — Wizard simplified to direct 3-prompt custom flow
 
 Patch release. Replaces the 16-line preset menu with a direct

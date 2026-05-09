@@ -21,6 +21,40 @@ from typing import Any, Iterable, Protocol, runtime_checkable
 
 from phantom.errors import PhantomError
 
+
+class _ToolsNotSupported(Exception):
+    """Internal: raised by _post_chat when the model rejects the tool payload.
+
+    OpenAICompatibleProvider catches this, latches off tool support for the
+    rest of the session, and retries the same prompt without tools.
+    """
+
+
+_TOOL_REJECTION_HINTS = (
+    "object of type undefined",          # NVIDIA NIM minimax bug
+    "tools are not supported",
+    "tool_calls is not supported",
+    "tool_choice is not supported",
+    "this model does not support tool",
+    "function calling is not supported",
+    "tool_use_failed",
+    "no tool support",
+    "tools parameter",
+)
+
+
+def _looks_like_tool_rejection(body: str) -> bool:
+    """Pattern-match the response body for known 'no tools' error shapes.
+
+    We only call this when *tools* were in the payload. False positives
+    would just trigger a retry without tools, which is harmless on a
+    transient 5xx — the retry either succeeds or raises with the real
+    error message preserved.
+    """
+    low = body.lower()
+    return any(h in low for h in _TOOL_REJECTION_HINTS)
+
+
 __all__ = [
     "OpenAICompatibleProvider",
     "Provider",
@@ -135,6 +169,7 @@ class OpenAICompatibleProvider:
         name: str = "openai-compat",
         timeout_s: float = 120.0,
         client: Any = None,  # httpx.Client; injected by tests
+        tools_supported: bool = True,
     ) -> None:
         if not base_url:
             raise PhantomError("provider requires base_url")
@@ -146,6 +181,8 @@ class OpenAICompatibleProvider:
         self._model = model
         self._timeout = timeout_s
         self._client = client  # lazy-imported below
+        self._tools_supported = tools_supported  # latched off on 5xx with tools
+        self._tools_warning_sink: Any = None  # callable(str) — set by chat REPL
 
     def _http(self) -> Any:
         if self._client is not None:
@@ -158,6 +195,22 @@ class OpenAICompatibleProvider:
         self,
         messages: list[ProviderMessage],
         *,
+        tools: list[dict[str, Any]],
+    ) -> ProviderResponse:
+        send_tools = bool(tools) and self._tools_supported
+        try:
+            return self._post_chat(messages, tools if send_tools else [])
+        except _ToolsNotSupported as e:
+            self._tools_supported = False
+            self._notify(
+                f"  ⚠ provider {self.name!r} doesn't accept tools "
+                f"(model {self._model!r}); falling back to chat-only mode."
+            )
+            return self._post_chat(messages, [])
+
+    def _post_chat(
+        self,
+        messages: list[ProviderMessage],
         tools: list[dict[str, Any]],
     ) -> ProviderResponse:
         payload: dict[str, Any] = {
@@ -178,12 +231,33 @@ class OpenAICompatibleProvider:
         except Exception as exc:  # network errors
             raise PhantomError(f"provider {self.name!r} request failed: {exc}") from exc
         if response.status_code >= 400:
+            body = response.text[:300]
+            if (
+                tools
+                and response.status_code in (400, 422, 500, 502, 503)
+                and _looks_like_tool_rejection(body)
+            ):
+                raise _ToolsNotSupported(body)
             raise PhantomError(
-                f"provider {self.name!r} returned {response.status_code}: "
-                f"{response.text[:200]}"
+                f"provider {self.name!r} returned {response.status_code}: {body}"
             )
         data = response.json()
         return self._parse(data)
+
+    def set_tools_warning_sink(self, fn: Any) -> None:
+        """Register a callable(str) the provider calls when it disables tools.
+
+        The chat REPL passes a small printer here so the user sees the fallback
+        notice inline. None / unset is fine — silent fallback.
+        """
+        self._tools_warning_sink = fn
+
+    def _notify(self, msg: str) -> None:
+        if self._tools_warning_sink is not None:
+            try:
+                self._tools_warning_sink(msg)
+            except Exception:
+                pass
 
     # ─── encoding / decoding ──────────────────────────────────────────
 
