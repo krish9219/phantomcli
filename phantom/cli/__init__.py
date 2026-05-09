@@ -121,8 +121,16 @@ def _doctor_cmd(
     json_output: bool = typer.Option(
         False, "--json", help="Emit machine-readable JSON."
     ),
+    chat_smoke: bool = typer.Option(
+        False, "--chat",
+        help="Smoke-test chat startup (catches prompt_toolkit / import "
+             "regressions like the v1.1.23 Ctrl+V crash).",
+    ),
 ) -> None:
     import json
+    if chat_smoke:
+        rc = _chat_smoke_test()
+        raise typer.Exit(rc)
     report = build_report()
     if json_output:
         typer.echo(json.dumps(report, separators=(",", ":")))
@@ -130,6 +138,79 @@ def _doctor_cmd(
         _print_text_report(report)
     if report["selected"] is None:
         raise typer.Exit(1)
+
+
+def _chat_smoke_test() -> int:
+    """Import the chat module + build a PromptSession to verify the chat
+    REPL boots cleanly. Doesn't actually enter the chat loop.
+
+    Catches the v1.1.23-class bug where unit tests passed (scripted
+    providers + synthesised read_line) but the real prompt_toolkit
+    setup crashed at import time inside `chat()`.
+    """
+    typer.echo("phantom doctor --chat: testing chat startup…")
+    failures: list[str] = []
+
+    # Step 1: import every module the chat REPL depends on.
+    try:
+        import phantom.cli.chat as _chat
+        import phantom.cli.boot as _boot
+        import phantom.cli.repl as _repl
+        import phantom.cli.setup_wizard as _wizard
+        from phantom.agent.session import AgentSession  # noqa: F401
+        from phantom.agent.spinner import PhantomSpinner  # noqa: F401
+        from phantom.cli.sysinfo import collect_system_info  # noqa: F401
+    except Exception as exc:
+        failures.append(f"import error: {type(exc).__name__}: {exc}")
+
+    # Step 2: try to build a PromptSession with the same key bindings
+    # the chat REPL uses. This is the layer where v1.1.23's filter=None
+    # blew up.
+    try:
+        from prompt_toolkit import PromptSession
+        from prompt_toolkit.history import InMemoryHistory
+        from prompt_toolkit.completion import WordCompleter
+        from prompt_toolkit.key_binding import KeyBindings
+        bindings = KeyBindings()
+        @bindings.add("escape", "enter")
+        def _(event):
+            event.current_buffer.insert_text("\n")
+        completer = WordCompleter(["/help", "/exit"])
+        # Build the session — we never call .prompt() so it doesn't read.
+        PromptSession(
+            history=InMemoryHistory(),
+            completer=completer,
+            multiline=True,
+            key_bindings=bindings,
+        )
+    except Exception as exc:
+        failures.append(f"prompt_toolkit setup error: {type(exc).__name__}: {exc}")
+
+    # Step 3: render an empty boot banner end-to-end.
+    try:
+        from io import StringIO
+        from phantom.cli.boot import render_boot_banner
+        from phantom.cli.sysinfo import collect_system_info
+        from phantom.profile import Profile
+        buf = []
+        render_boot_banner(
+            write=buf.append,
+            profile=Profile(),
+            system=collect_system_info(),
+            animate=False,
+        )
+        if not any("Phantom" in s for s in buf):
+            failures.append("boot banner did not include 'Phantom'")
+    except Exception as exc:
+        failures.append(f"boot banner error: {type(exc).__name__}: {exc}")
+
+    if failures:
+        typer.echo("\n  ✗ chat smoke test FAILED")
+        for f in failures:
+            typer.echo(f"    - {f}")
+        return 1
+    typer.echo("  ✓ chat smoke test passed (3/3 checks)")
+    return 0
 
 
 @app.command(

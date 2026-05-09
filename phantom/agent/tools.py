@@ -474,6 +474,14 @@ def default_tools(
 
     fs_allowlist: tuple[str, ...] = (workdir, *extra_writable_paths)
 
+    # Read-only allowlist — superset of fs_allowlist that adds
+    # ~/.phantom/ so the agent can answer questions like "read my
+    # profile.json" without being blocked by the workspace boundary.
+    # Writes still use the strict fs_allowlist (workspace + extras).
+    import os as _os
+    _phantom_home = _os.environ.get("PHANTOM_HOME") or _os.path.expanduser("~/.phantom")
+    read_allowlist: tuple[str, ...] = (*fs_allowlist, _phantom_home)
+
     tools: list[ToolDefinition] = [
         ToolDefinition(
             name="run_bash",
@@ -597,7 +605,7 @@ def default_tools(
                 },
                 "required": ["path"],
             },
-            handler=lambda args: _read_file(args, allowlist=fs_allowlist),
+            handler=lambda args: _read_file(args, allowlist=read_allowlist),
         ),
         ToolDefinition(
             name="edit_file",
@@ -642,7 +650,7 @@ def default_tools(
                 },
                 "required": ["path"],
             },
-            handler=lambda args: _list_dir(args, allowlist=fs_allowlist),
+            handler=lambda args: _list_dir(args, allowlist=read_allowlist),
         ),
         ToolDefinition(
             name="web_search",

@@ -193,7 +193,34 @@ def edit_file(
     except OSError as exc:
         return {"ok": False, "path": str(target), "replacements": 0,
                 "error": f"{type(exc).__name__}: {exc}"}
-    return {"ok": True, "path": str(target), "replacements": replaced, "error": ""}
+
+    # Compact unified diff for the chat REPL to render in red/green.
+    # Limited to ~40 lines so the model context doesn't balloon on
+    # large edits.
+    diff = _compact_diff(original, updated, str(target))
+    return {
+        "ok": True, "path": str(target),
+        "replacements": replaced, "error": "",
+        "diff": diff,
+    }
+
+
+def _compact_diff(before: str, after: str, path: str, max_lines: int = 40) -> str:
+    """Tiny unified diff, no surrounding context blocks longer than 3 lines.
+
+    Designed for the chat REPL to colour-render in red/green so the user
+    sees what changed at a glance. Truncates with `...` after max_lines
+    so a 1000-line edit doesn't flood the screen.
+    """
+    import difflib
+    diff_lines = list(difflib.unified_diff(
+        before.splitlines(keepends=False),
+        after.splitlines(keepends=False),
+        fromfile=path, tofile=path, n=2, lineterm="",
+    ))
+    if len(diff_lines) > max_lines:
+        diff_lines = diff_lines[:max_lines] + [f"... ({len(diff_lines) - max_lines} more diff lines)"]
+    return "\n".join(diff_lines)
 
 
 def list_dir(

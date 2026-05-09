@@ -26,10 +26,11 @@ binds as ``phantom chat``.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import typer
 
@@ -169,6 +170,24 @@ def _looks_garbled(text: str) -> bool:
     )
 
 
+_TOOL_ICONS = {
+    "run_bash":      "⚡",
+    "start_server":  "🚀",
+    "write_file":    "📝",
+    "edit_file":     "✏️ ",
+    "read_file":     "🔍",
+    "list_dir":      "📂",
+    "web_search":    "🌐",
+    "web_fetch":     "🌍",
+    "memory_add":    "💾",
+    "memory_search": "🔎",
+}
+
+
+def _tool_icon(name: str) -> str:
+    return _TOOL_ICONS.get(name, "→")
+
+
 def _format_tool_call(name: str, args: dict[str, Any]) -> str:
     """One-line dim summary of a tool call for the live progress feed.
 
@@ -198,8 +217,127 @@ def _format_tool_call(name: str, args: dict[str, Any]) -> str:
         return f"{DIM}{_trunc(str(args.get('text', '')), 60)}{RESET}"
     if name == "web_fetch":
         return f"{DIM}{_trunc(str(args.get('url', '')), 80)}{RESET}"
+    if name == "web_search":
+        return f"{DIM}{_trunc(str(args.get('query', '')), 80)}{RESET}"
+    if name == "start_server":
+        return f"{DIM}{_trunc(str(args.get('command', '')), 70)}{RESET}"
     keys = list(args.keys())[:3]
     return f"{DIM}({', '.join(keys)}){RESET}"
+
+
+def _format_tool_result_preview(name: str, result_str: str) -> str:
+    """Short dim summary of what a tool returned. Shown right after the
+    tool-call line so the user sees progress at a glance.
+
+    Picks the most informative field per tool. Returns "" when there's
+    nothing meaningful to show.
+    """
+    DIM = "\033[2m"; GREEN = "\033[32m"; YELLOW = "\033[33m"; RED = "\033[31m"; RESET = "\033[0m"
+    try:
+        data = json.loads(result_str) if isinstance(result_str, str) else {}
+    except (json.JSONDecodeError, TypeError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+
+    # Errors get a red flag.
+    if data.get("error"):
+        err = str(data["error"])[:120]
+        return f"      {RED}× {err}{RESET}"
+
+    if name == "run_bash":
+        rc = data.get("exit_code", 0)
+        out = (data.get("stdout") or "").strip().splitlines()
+        first = out[0] if out else "(no output)"
+        first = first[:100]
+        mark = f"{GREEN}✓{RESET}" if rc == 0 else f"{YELLOW}exit {rc}{RESET}"
+        return f"      {DIM}{mark} {first}{RESET}"
+    if name in ("write_file",):
+        b = data.get("bytes_written", 0)
+        return f"      {DIM}{GREEN}✓{RESET}{DIM} wrote {b} bytes{RESET}"
+    if name == "edit_file":
+        diff = data.get("diff", "")
+        if diff:
+            return _format_diff(diff)
+        return f"      {DIM}{GREEN}✓{RESET}{DIM} {data.get('replacements', 0)} replacement(s){RESET}"
+    if name == "read_file":
+        size = data.get("size_bytes", 0)
+        return f"      {DIM}{GREEN}✓{RESET}{DIM} {size} bytes{RESET}"
+    if name == "list_dir":
+        n = len(data.get("entries") or [])
+        return f"      {DIM}{GREEN}✓{RESET}{DIM} {n} entries{RESET}"
+    if name == "start_server":
+        url = data.get("url", "")
+        listening = data.get("listening")
+        if listening:
+            return f"      {DIM}{GREEN}✓ listening at {url}{RESET}"
+        return f"      {DIM}{YELLOW}pid {data.get('pid', '?')}, not yet listening at {url}{RESET}"
+    if name == "web_search":
+        if isinstance(data, dict) and "error" not in data:
+            return ""
+        # Empty list etc.
+        return ""
+    if name == "web_fetch":
+        if data.get("ok"):
+            status = data.get("status", "?")
+            ct = data.get("content_type", "")
+            return f"      {DIM}{GREEN}✓{RESET}{DIM} {status} {ct}{RESET}"
+    if name == "memory_add":
+        rec_id = data.get("id", "")
+        return f"      {DIM}{GREEN}✓{RESET}{DIM} stored ({rec_id}){RESET}"
+    return ""
+
+
+def _render_assistant_reply(text: str, write: Callable[[str], None] | None = None) -> None:
+    """Render the agent's reply with rich markdown when available.
+
+    Prints a trailing newline. Falls back to plain text via *write* when
+    rich isn't installed, the stream isn't a TTY (CI / piped output),
+    or the caller passes a custom write target (tests).
+    """
+    if write is None:
+        def _w(s: str):
+            sys.stdout.write(s)
+            sys.stdout.flush()
+        write = _w
+    if not text:
+        write("\n")
+        return
+    try:
+        from rich.console import Console
+        from rich.markdown import Markdown
+        if not sys.stdout.isatty():
+            raise RuntimeError("not a tty")
+        # Rich renders directly to its own stream; we still want the
+        # caller's write hook for sequencing. Capture rendered text into
+        # a buffer then push through write().
+        from io import StringIO
+        buf = StringIO()
+        console = Console(file=buf, force_terminal=True, soft_wrap=True)
+        console.print(Markdown(text))
+        write(buf.getvalue() + "\n")
+    except Exception:
+        write(text + "\n\n")
+
+
+def _format_diff(diff: str) -> str:
+    """Render a unified diff with red/green per line, indented for the
+    tool-result preview block."""
+    GREEN = "\033[32m"; RED = "\033[31m"; CYAN = "\033[36m"
+    DIM = "\033[2m"; RESET = "\033[0m"
+    out_lines = []
+    for line in diff.splitlines():
+        if line.startswith("+++") or line.startswith("---"):
+            out_lines.append(f"      {DIM}{line}{RESET}")
+        elif line.startswith("@@"):
+            out_lines.append(f"      {CYAN}{line}{RESET}")
+        elif line.startswith("+"):
+            out_lines.append(f"      {GREEN}{line}{RESET}")
+        elif line.startswith("-"):
+            out_lines.append(f"      {RED}{line}{RESET}")
+        else:
+            out_lines.append(f"      {DIM}{line}{RESET}")
+    return "\n".join(out_lines)
 
 
 _WINDOWS_SHELL_GUIDANCE = (
@@ -1386,7 +1524,12 @@ def run_repl(
         if prior_system_prompt is not None:
             session.system_prompt = prior_system_prompt
         reply = _strip_thinking_tags(reply)
-        write(f"{GREEN}{assistant_label} ›{RESET} {reply}\n")
+        # Render assistant reply with rich markdown (code blocks get
+        # syntax highlighting, lists indent, tables align, **bold**
+        # works). Falls back to plain text on non-TTY or when rich
+        # isn't available.
+        write(f"{GREEN}{assistant_label} ›{RESET} ")
+        _render_assistant_reply(reply, write=write)
         if _looks_garbled(reply):
             current_model = getattr(session.provider, "_model", "")
             write(
@@ -1395,7 +1538,6 @@ def run_repl(
                 f"misbehaving on this endpoint. Try:\n"
                 f"  {DIM}/reset{RESET} then {DIM}/model meta/llama-3.3-70b-instruct{RESET}\n"
             )
-        write("\n")
 
 
 def resolve_chat_config(
@@ -1559,15 +1701,25 @@ def chat(
         )
 
     # Show each tool call live so a long turn doesn't look stuck. The
-    # spinner pauses, the call is printed, then the spinner resumes —
-    # all driven from the tool callback the session calls between
-    # rounds.
+    # spinner pauses, the call + a per-tool icon are printed, then on
+    # the result we print a short preview line (success ✓, exit code,
+    # bytes written, diff, URL, etc.).
     def _tool_call_printer(_round_idx, tc):
+        icon = _tool_icon(tc.name)
         summary = _format_tool_call(tc.name, tc.arguments)
-        sys.stdout.write(f"\r\033[K  \033[2m→\033[0m \033[36m{tc.name}\033[0m {summary}\n")
+        sys.stdout.write(
+            f"\r\033[K  \033[2m{icon}\033[0m \033[36m{tc.name}\033[0m {summary}\n"
+        )
         sys.stdout.flush()
 
+    def _tool_result_printer(_round_idx, tc, result):
+        preview = _format_tool_result_preview(tc.name, result)
+        if preview:
+            sys.stdout.write(preview + "\n")
+            sys.stdout.flush()
+
     session.on_tool_call = _tool_call_printer
+    session.on_tool_result = _tool_result_printer
 
     # Tell run_repl not to print its own greeting; the boot banner did.
     session._phantom_already_greeted = True

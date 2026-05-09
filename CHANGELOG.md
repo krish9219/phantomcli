@@ -13,6 +13,55 @@ The major version cadence:
 
 ---
 
+## [1.1.26] — 2026-05-10 — TUI polish: tool icons, diff preview, markdown reply, expanded read-allowlist
+
+Patch release. Closes the gaps from the v1.1.25 self-rating: read
+access to `~/.phantom/*` was blocked, replies were raw text, tool calls
+were undifferentiated lines, edits had no visible diff, and there was
+no smoke test for chat startup.
+
+### Added
+
+* **`~/.phantom/` is now in the read-only allowlist.** `read_file`
+  and `list_dir` can pull `profile.json` / `providers.json` /
+  `memory.db` even when workspace is set elsewhere. Writes still use
+  the strict workspace allowlist — agents can't overwrite the user's
+  profile by accident.
+* **Per-tool icons in the live progress feed.** ⚡ run_bash,
+  📝 write_file, ✏️ edit_file, 🔍 read_file, 📂 list_dir,
+  🌐 web_search, 🌍 web_fetch, 💾 memory_add, 🔎 memory_search,
+  🚀 start_server. Catch a missing icon: `test_all_default_tools_have_icons`.
+* **Result preview after each tool call.** Tool result is parsed and
+  a one-line dim summary prints below the call: `✓ wrote 1234 bytes`,
+  `exit 1`, listening URL, `× error`, etc. Per-tool field selection.
+* **Inline coloured diff for `edit_file`.** `edit_file` now returns
+  a `diff` field (compact unified, capped at 40 lines). The chat REPL
+  renders adds in green, removes in red, hunk headers in cyan —
+  Cursor-style.
+* **Markdown rendering of assistant replies.** Code blocks get syntax
+  highlighting, lists indent, tables align, **bold** works. Uses
+  `rich.markdown.Markdown`. Falls back to plain text on non-TTY.
+* **`phantom doctor --chat`** smoke test. Imports the chat module,
+  builds a `PromptSession` with the same key-bindings the chat REPL
+  uses, renders the boot banner — all non-interactively. Catches the
+  v1.1.23-class bug where unit tests passed but the binary crashed on
+  first launch. Exits 0 on pass, 1 on fail.
+
+### Tests
+
+* 25 new in `phantom/tests/test_v1_1_26_fixes.py`: read-allowlist
+  expansion, write-allowlist unchanged, edit_file diff round-trip,
+  diff truncation, parametrised tool-icon table, every default tool
+  has an icon, run_bash/write_file/edit_file/read_file/list_dir/
+  start_server/error preview shapes, diff colour codes, markdown
+  rendering edge cases (empty / non-TTY), doctor --chat smoke test
+  passing.
+* 1 updated: chat-test reply-output assertion (rendering now goes
+  through `write` so test buffer captures it).
+* Suite: 2522 passed, 0 failed.
+
+---
+
 ## [1.1.25] — 2026-05-10 — Auto-continue mid-task checkpoints + prompt label survives paste
 
 Patch release. Two real issues from the v1.1.24 user run:
