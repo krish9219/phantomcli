@@ -13,6 +13,40 @@ The major version cadence:
 
 ---
 
+## [1.1.4] — 2026-05-09 — Real `phantom update` command
+
+Patch release. Adds the missing self-update command. Existing installs
+no longer have to rerun `install.ps1` / `install.sh` to pick up new
+versions.
+
+### Added
+
+* **`phantom update`** — fetches `version.json` from the official CDN,
+  compares with `phantom.__version__`, downloads `phantomcli-source.zip`,
+  verifies the SHA-256 against the manifest, and extracts in place over
+  the install dir. User data in the install root (`.license`,
+  `.machine_key`, `memory.db`, `providers.json`, `oauth/`,
+  `.repl_history`) is preserved — only the package directories are
+  overwritten. Refuses unsafe zip entries (path traversal). Exit codes:
+  0 success / already-current, 1 network/extract failure, 2 SHA mismatch
+  or install dir not writable.
+* **`phantom update --check`** — compare and report only, don't download
+  or write anything.
+* **`phantom update --force`** — re-install even when already on the
+  latest version (recovery from a half-extracted update).
+* **`phantom update --manifest-url <url>`** — point at a self-hosted
+  mirror or a test manifest.
+
+### Tests
+
+* 19 new in `phantom/tests/test_update_cmd.py` covering version
+  comparison (parametrised), manifest parsing edge cases, extract
+  overwrite + user-data preservation + path-traversal rejection, and
+  full `perform_update()` flow (no-op match, download+extract, SHA
+  mismatch refused, `--force`).
+
+---
+
 ## [1.1.3] — 2026-05-09 — First-run setup wizard + REPL chat fall-through
 
 Patch release. Removes the two largest first-run frictions: `phantom

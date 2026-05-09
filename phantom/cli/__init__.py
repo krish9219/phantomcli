@@ -470,11 +470,13 @@ from phantom.cli.mcp_import_cmd import mcp_import as _mcp_import_impl, mcp_impor
 from phantom.cli.provider_cmd import config_app as _config_app
 from phantom.cli.selfdev_cmd import selfdev_cmd as _selfdev_impl
 from phantom.cli.swarm_cmd import swarm_cmd as _swarm_impl
+from phantom.cli.update_cmd import update as _update_impl
 
 app.command("bench", help="Run reproducible performance benchmarks.")(_bench_impl)
 app.command("dictate", help="Record audio and transcribe via Whisper. [Pro]")(_dictate_impl)
 app.command("swarm", help="Fan out N subagents into isolated git worktrees. [Pro]")(_swarm_impl)
 app.command("self-dev", help="Apply a change in a sandboxed worktree, run tests. [Pro]")(_selfdev_impl)
+app.command("update", help="Update Phantom to the latest release.")(_update_impl)
 app.add_typer(_license_app, name="license")
 app.add_typer(_memory_app, name="memory")
 app.add_typer(_config_app, name="config")
