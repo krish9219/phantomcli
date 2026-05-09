@@ -13,6 +13,72 @@ The major version cadence:
 
 ---
 
+## [1.1.10] — 2026-05-09 — JARVIS boot, profile, and 9 new slash commands
+
+Patch release. Phantom now feels like a real assistant: it asks for
+your name and a workspace path on first run, greets you on every boot
+with a system snapshot, and exposes a full set of slash commands for
+profile, licensing, memory, and uninstall — all from inside chat.
+
+### Added
+
+* **First-run profile** at `~/.phantom/profile.json`. The first time
+  you run `phantom chat` it asks three questions:
+  1. What should I call myself? (default: Phantom)
+  2. What should I call you?
+  3. Where should I create projects? (default: `~/Projects`)
+  Subsequent boots skip the questions. The profile shapes the agent's
+  system prompt — your name, the assistant's name, and the workspace
+  are injected so the agent addresses you by name and creates files
+  in your chosen directory by default.
+* **JARVIS-style boot banner** — cyan ANSI logo + system snapshot
+  (host, OS, CPU, RAM free/total, disk free/total, workspace) +
+  personalised "Welcome back, <name>" greeting. Animated when stdout
+  is a TTY; silent on pipes / CI.
+* **Slash commands**:
+  - `/name [new]` — show or rename the assistant.
+  - `/workspace [path]` — show or change the project root (auto-creates).
+  - `/system` — host snapshot on demand.
+  - `/memory [query]` — show stored memory; with a query, search.
+  - `/buy` — Pro lifetime licence URL + price.
+  - `/license` — show current tier.
+  - `/install-license <PHC-...>` / `/change-license <PHC-...>` —
+    activate or replace a key.
+  - `/god-mode [on|off]` — autonomous-action mode (modifies system
+    prompt, persisted to profile).
+  - `/uninstall` — confirmation flow that removes `~/.phantom/`
+    entirely. Without `--yes` it just warns. With `--yes` it
+    rmtree's the install dir and prints the platform-specific shim
+    removal command.
+* `/help` is now grouped (chat / model / you / licence / danger).
+
+### Improved
+
+* **Tool errors return actionable JSON** instead of raising. When the
+  model passes a missing or empty `path` to write_file / read_file /
+  list_dir / edit_file, the handler now returns
+  `{"error": "...", "hint": "Retry with: {...example args...}"}` so
+  the model can recover on the next round. Previously a single bad
+  tool call killed the turn and produced output-only-no-files (the
+  Flask app issue from the v1.1.9 user report).
+
+### Tests
+
+* 22 new in `phantom/tests/test_profile_and_boot.py` covering profile
+  load/save/roundtrip, onboarding (skip-when-complete, all-three-
+  fields, default-on-blank), sysinfo struct, boot banner with/without
+  user_name, every new slash command (no-arg, with-arg, persistence
+  to profile, system-prompt mutation for /god-mode), uninstall
+  confirm-required + --yes flow, and tool error guidance.
+* 1 updated in `phantom/tests/test_fs_tools.py` — bad write_file args
+  now return JSON instead of raising.
+* `tests/sandbox/test_no_unsandboxed_subprocess.py` allowlist gains
+  `phantom/cli/sysinfo.py` (read-only host probes for cpu/mem on
+  macOS/Windows; Linux uses /proc directly).
+* Suite: 2305 passed, 0 failed.
+
+---
+
 ## [1.1.9] — 2026-05-09 — base_url normalization (auto-strip /chat/completions)
 
 Patch release. Triggered by the v1.1.8 user report: pasting

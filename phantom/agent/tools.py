@@ -40,13 +40,29 @@ def _run_bash(args: dict[str, Any], *, workdir: str) -> str:
     return json.dumps(summary)
 
 
+def _bad_path_hint(tool: str, example_args: dict[str, Any]) -> str:
+    """Return a JSON error blob the model can act on, not just a stack-style
+    message that ends the turn. Tells the model what shape the args should
+    take and gives a literal example to copy."""
+    return json.dumps({
+        "error": f"{tool}: 'path' is missing or empty",
+        "hint": (
+            f"Retry with a non-empty relative path. Example arguments: "
+            f"{json.dumps(example_args)}"
+        ),
+    })
+
+
 def _write_file(args: dict[str, Any], *, allowlist: tuple[str, ...]) -> str:
     path = args.get("path", "")
     if not isinstance(path, str) or not path.strip():
-        raise PhantomError("write_file: 'path' must be a non-empty string")
+        return _bad_path_hint("write_file", {"path": "app.py", "text": "print('hi')"})
     text = args.get("text") or args.get("content") or ""
     if not isinstance(text, str):
-        raise PhantomError("write_file: 'text' must be a string")
+        return json.dumps({
+            "error": "write_file: 'text' must be a string",
+            "hint": f"You sent {type(text).__name__}. Pass the file contents as a JSON string under 'text'.",
+        })
     result = write_file(path=path, text=text, allowlist=allowlist)
     return json.dumps(result)
 
@@ -54,7 +70,7 @@ def _write_file(args: dict[str, Any], *, allowlist: tuple[str, ...]) -> str:
 def _read_file(args: dict[str, Any], *, allowlist: tuple[str, ...]) -> str:
     path = args.get("path", "")
     if not isinstance(path, str) or not path.strip():
-        raise PhantomError("read_file: 'path' must be a non-empty string")
+        return _bad_path_hint("read_file", {"path": "app.py"})
     max_bytes = int(args.get("max_bytes", 256 * 1024))
     if max_bytes < 1024:
         max_bytes = 1024
@@ -65,7 +81,7 @@ def _read_file(args: dict[str, Any], *, allowlist: tuple[str, ...]) -> str:
 def _list_dir(args: dict[str, Any], *, allowlist: tuple[str, ...]) -> str:
     path = args.get("path", "")
     if not isinstance(path, str) or not path.strip():
-        raise PhantomError("list_dir: 'path' must be a non-empty string")
+        return _bad_path_hint("list_dir", {"path": "."})
     result = list_dir(path=path, allowlist=allowlist)
     return json.dumps(result)
 
@@ -73,7 +89,10 @@ def _list_dir(args: dict[str, Any], *, allowlist: tuple[str, ...]) -> str:
 def _edit_file(args: dict[str, Any], *, allowlist: tuple[str, ...]) -> str:
     path = args.get("path", "")
     if not isinstance(path, str) or not path.strip():
-        raise PhantomError("edit_file: 'path' must be a non-empty string")
+        return _bad_path_hint(
+            "edit_file",
+            {"path": "app.py", "old_string": "Hello", "new_string": "Hello, World"},
+        )
     old_string = args.get("old_string", "")
     new_string = args.get("new_string", "")
     replace_all = bool(args.get("replace_all", False))

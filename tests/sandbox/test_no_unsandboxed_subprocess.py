@@ -47,6 +47,11 @@ ALLOWED = {
     # operator-chosen trusted code; ADR-0003 explicitly sanctions this
     # path. The transport module's docstring carries the full rationale.
     PHANTOM_DIR / "mcp" / "transport.py",
+    # sysinfo collects host facts (cpu brand, ram, vm_stat) on macOS /
+    # Windows by reading well-known system tools. Read-only probes; no
+    # user input ever reaches argv. Linux path uses /proc directly and
+    # never enters this branch.
+    PHANTOM_DIR / "cli" / "sysinfo.py",
     # ─── v1.0 exemptions ────────────────────────────────────────────
     # Each carries its own justification; the common shape is "shells
     # out to a developer-trusted external tool (git, gh, pytest, sox)

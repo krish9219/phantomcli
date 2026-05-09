@@ -54,6 +54,12 @@ SLASH_COMMANDS = {
     "/model", "/models", "/providers",
     "/add",
     "/smart",
+    "/name", "/workspace",
+    "/buy", "/license", "/install-license", "/change-license",
+    "/god-mode",
+    "/memory",
+    "/uninstall",
+    "/system",
 }
 
 # Sentinel returned by _handle_slash to mean "exit the REPL".
@@ -98,15 +104,29 @@ def _handle_slash(
 
     if head == "/help":
         write(f"{DIM}slash commands:{RESET}\n")
+        write(f"  {DIM}── chat ──{RESET}\n")
+        write(f"  {CYAN}/reset{RESET} {DIM}— clear conversation history{RESET}\n")
+        write(f"  {CYAN}/history{RESET} {DIM}— show history length{RESET}\n")
+        write(f"  {CYAN}/exit{RESET} {DIM}— quit (also /quit){RESET}\n")
+        write(f"  {DIM}── model ──{RESET}\n")
         write(f"  {CYAN}/model{RESET} {DIM}— show current model{RESET}\n")
         write(f"  {CYAN}/model <name>{RESET} {DIM}— switch to a registered provider{RESET}\n")
         write(f"  {CYAN}/models{RESET} {DIM}— list registered providers (alias /providers){RESET}\n")
         write(f"  {CYAN}/add{RESET} {DIM}— add a new provider via the wizard{RESET}\n")
         write(f"  {CYAN}/smart [on|off]{RESET} {DIM}— toggle prompt-expansion mode{RESET}\n")
-        write(f"  {CYAN}/reset{RESET} {DIM}— clear conversation history{RESET}\n")
-        write(f"  {CYAN}/history{RESET} {DIM}— show history length{RESET}\n")
-        write(f"  {CYAN}/help{RESET} {DIM}— this list{RESET}\n")
-        write(f"  {CYAN}/exit{RESET} {DIM}— quit (also /quit){RESET}\n")
+        write(f"  {DIM}── you ──{RESET}\n")
+        write(f"  {CYAN}/name [new]{RESET} {DIM}— show or rename the assistant{RESET}\n")
+        write(f"  {CYAN}/workspace [path]{RESET} {DIM}— show or change project root{RESET}\n")
+        write(f"  {CYAN}/system{RESET} {DIM}— show host snapshot (os, ram, disk){RESET}\n")
+        write(f"  {CYAN}/memory [query]{RESET} {DIM}— show stored memory; with query, search{RESET}\n")
+        write(f"  {CYAN}/god-mode [on|off]{RESET} {DIM}— autonomous mode (default off){RESET}\n")
+        write(f"  {DIM}── licence ──{RESET}\n")
+        write(f"  {CYAN}/license{RESET} {DIM}— show current tier{RESET}\n")
+        write(f"  {CYAN}/buy{RESET} {DIM}— Pro lifetime licence (₹999, 3 devices){RESET}\n")
+        write(f"  {CYAN}/install-license <PHC-...>{RESET} {DIM}— activate a key{RESET}\n")
+        write(f"  {CYAN}/change-license <PHC-...>{RESET} {DIM}— replace current key{RESET}\n")
+        write(f"  {DIM}── danger ──{RESET}\n")
+        write(f"  {CYAN}/uninstall{RESET} {DIM}— remove ~/.phantom/ (asks confirmation){RESET}\n")
         return True
 
     if head in ("/models", "/providers"):
@@ -163,7 +183,222 @@ def _handle_slash(
             write(f"  smart mode: {CYAN}{cur}{RESET}  ({DIM}/smart on{RESET} or {DIM}/smart off{RESET})\n")
         return True
 
+    if head == "/name":
+        from phantom.profile import load_profile, save_profile
+        profile = load_profile()
+        if not arg:
+            write(f"  assistant: {CYAN}{profile.assistant_name}{RESET}\n")
+            write(f"  user:      {CYAN}{profile.user_name or '(not set)'}{RESET}\n")
+            write(f"  {DIM}usage: /name <new-assistant-name>{RESET}\n")
+            return True
+        old = profile.assistant_name
+        profile.assistant_name = arg
+        save_profile(profile)
+        write(f"{GREEN}✓{RESET} assistant renamed: {DIM}{old}{RESET} → {CYAN}{arg}{RESET}\n")
+        return True
+
+    if head == "/workspace":
+        from phantom.profile import load_profile, save_profile
+        from pathlib import Path as _Path
+        profile = load_profile()
+        if not arg:
+            write(f"  workspace: {CYAN}{profile.workspace_path or '(not set)'}{RESET}\n")
+            write(f"  {DIM}usage: /workspace <path>{RESET}\n")
+            return True
+        path = os.path.abspath(os.path.expanduser(arg))
+        try:
+            _Path(path).mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            write(f"{YELLOW}could not create {path}: {e}{RESET}\n")
+            return True
+        profile.workspace_path = path
+        save_profile(profile)
+        write(f"{GREEN}✓{RESET} workspace set to {CYAN}{path}{RESET}\n")
+        return True
+
+    if head == "/system":
+        from phantom.cli.sysinfo import collect_system_info
+        from phantom.profile import load_profile
+        profile = load_profile()
+        info = collect_system_info(profile.workspace_path)
+        write(f"  {DIM}host:{RESET} {info.hostname}\n")
+        write(f"  {DIM}os:{RESET}   {info.os_name} {info.os_release}\n")
+        write(f"  {DIM}cpu:{RESET}  {info.cpu} ({info.cpu_count} cores)\n")
+        if info.ram_total_gb > 0:
+            write(f"  {DIM}ram:{RESET}  {info.ram_free_gb:.1f} GB free of {info.ram_total_gb:.1f} GB\n")
+        if info.disk_total_gb > 0:
+            write(f"  {DIM}disk:{RESET} {info.disk_free_gb:.1f} GB free of {info.disk_total_gb:.1f} GB\n")
+        if profile.workspace_path:
+            write(f"  {DIM}workspace:{RESET} {profile.workspace_path}\n")
+        return True
+
+    if head == "/buy":
+        write(f"  {CYAN}Phantom Pro lifetime licence — ₹999 (one-time, 3 devices){RESET}\n")
+        write(f"  {DIM}Buy:    {RESET}https://phantom.aravindlabs.tech/buy\n")
+        write(f"  {DIM}After payment your PHC-XXXXXXXX-XXXXXXXX-XXXXXXXX key arrives by email.{RESET}\n")
+        write(f"  {DIM}Then run:{RESET} /install-license PHC-...\n")
+        return True
+
+    if head in ("/install-license", "/change-license"):
+        if not arg:
+            write(f"{YELLOW}usage: {head} PHC-XXXXXXXX-XXXXXXXX-XXXXXXXX{RESET}\n")
+            write(f"  {DIM}buy a key first: /buy{RESET}\n")
+            return True
+        ok = _install_license(arg.strip(), write)
+        return True
+
+    if head == "/license":
+        _show_license_status(write)
+        return True
+
+    if head == "/god-mode":
+        flag = arg.strip().lower()
+        from phantom.profile import load_profile, save_profile
+        profile = load_profile()
+        if flag in ("on", "1", "true", "yes"):
+            profile.god_mode = True
+            save_profile(profile)
+            _set_god_mode(session, True)
+            write(f"{YELLOW}⚡ god-mode active{RESET} — sandbox guards relaxed for this session.\n")
+        elif flag in ("off", "0", "false", "no"):
+            profile.god_mode = False
+            save_profile(profile)
+            _set_god_mode(session, False)
+            write(f"{GREEN}✓{RESET} god-mode {DIM}off{RESET}\n")
+        else:
+            cur = "on" if profile.god_mode else "off"
+            write(f"  god-mode: {CYAN}{cur}{RESET}  ({DIM}/god-mode on{RESET} or {DIM}/god-mode off{RESET})\n")
+        return True
+
+    if head == "/memory":
+        _show_memory(arg, write)
+        return True
+
+    if head == "/uninstall":
+        return _uninstall_flow(arg, write)
+
     return False
+
+
+def _install_license(key: str, write: Callable[[str], None]) -> bool:
+    GREEN = "\033[32m"; YELLOW = "\033[33m"; DIM = "\033[2m"; RESET = "\033[0m"
+    try:
+        from phantom import licensing
+        result = licensing.activate(key)
+    except Exception as e:
+        write(f"{YELLOW}licence activation failed: {e}{RESET}\n")
+        return False
+    if not getattr(result, "valid", False):
+        reason = getattr(result, "reason", "")
+        write(f"{YELLOW}licence rejected: {reason or 'unknown'}{RESET}\n")
+        return False
+    write(f"{GREEN}✓{RESET} licence installed.\n")
+    _show_license_status(write)
+    return True
+
+
+def _show_license_status(write: Callable[[str], None]) -> None:
+    CYAN = "\033[36m"; DIM = "\033[2m"; RESET = "\033[0m"
+    try:
+        from phantom import licensing
+        s = licensing.license_status()
+    except Exception as e:
+        write(f"  could not read licence: {e}\n")
+        return
+    write(f"  tier:    {CYAN}{s.tier}{RESET}\n")
+    if s.email:
+        write(f"  email:   {s.email}\n")
+    if s.tier == "trial" and s.days_remaining is not None:
+        write(f"  trial:   {s.days_remaining} day(s) remaining\n")
+    write(f"  {DIM}buy upgrade:{RESET} https://phantom.aravindlabs.tech/buy\n")
+
+
+def _show_memory(arg: str, write: Callable[[str], None]) -> None:
+    CYAN = "\033[36m"; DIM = "\033[2m"; YELLOW = "\033[33m"; RESET = "\033[0m"
+    try:
+        from phantom.memory import MemoryStore
+        phantom_home = os.environ.get("PHANTOM_HOME") or os.path.expanduser("~/.phantom")
+        store = MemoryStore.open(Path(phantom_home) / "memory.db")
+    except Exception as e:
+        write(f"{YELLOW}memory store unavailable: {e}{RESET}\n")
+        return
+    try:
+        if arg.strip():
+            results = store.search(query=arg.strip(), limit=10) if hasattr(store, "search") else []
+            if not results:
+                write(f"  {DIM}no matches for {arg!r}{RESET}\n")
+                return
+            for i, r in enumerate(results, start=1):
+                text = getattr(r, "text", str(r))[:120]
+                write(f"  {CYAN}{i}.{RESET} {text}\n")
+        else:
+            count = 0
+            try:
+                count = store.count() if hasattr(store, "count") else 0
+            except Exception:
+                pass
+            write(f"  memory:  {CYAN}{count}{RESET} entries at {DIM}~/.phantom/memory.db{RESET}\n")
+            write(f"  {DIM}search:  /memory <query>{RESET}\n")
+            write(f"  {DIM}store:   the agent calls memory_add/memory_search automatically.{RESET}\n")
+    finally:
+        try:
+            store.close()
+        except Exception:
+            pass
+
+
+def _uninstall_flow(arg: str, write: Callable[[str], None]) -> Any:
+    GREEN = "\033[32m"; YELLOW = "\033[33m"; DIM = "\033[2m"; RESET = "\033[0m"
+    confirmed = arg.strip().lower() in ("--yes", "--confirm", "yes", "confirm")
+    if not confirmed:
+        write(f"{YELLOW}⚠ this will remove ~/.phantom/ entirely{RESET}\n")
+        write(f"  {DIM}includes: licence, memory, providers, profile, device key.{RESET}\n")
+        write(f"  {DIM}re-run with:{RESET} /uninstall --yes\n")
+        write(f"  {DIM}to also remove the binary shim, follow the printed shell command.{RESET}\n")
+        return True
+
+    import shutil
+    phantom_home = Path(os.environ.get("PHANTOM_HOME") or os.path.expanduser("~/.phantom"))
+    if phantom_home.exists():
+        try:
+            shutil.rmtree(phantom_home)
+            write(f"{GREEN}✓{RESET} removed {phantom_home}\n")
+        except OSError as e:
+            write(f"{YELLOW}could not remove {phantom_home}: {e}{RESET}\n")
+    else:
+        write(f"  {DIM}{phantom_home} already gone{RESET}\n")
+
+    # Print shell-specific shim removal command. We don't auto-delete the
+    # shim because it sits on PATH and removing it without warning could
+    # surprise the user.
+    posix_shim = Path.home() / ".local" / "bin" / "phantom"
+    win_shim = Path.home() / ".local" / "bin" / "phantom.cmd"
+    write("\n  to remove the launcher shim, run:\n")
+    if posix_shim.exists() or os.name == "posix":
+        write(f"    {DIM}rm -f {posix_shim}{RESET}\n")
+    if win_shim.exists() or os.name == "nt":
+        write(f"    {DIM}del {win_shim}{RESET}\n")
+    write(f"\n  {DIM}phantom uninstall complete. exiting chat.{RESET}\n")
+    return _SLASH_EXIT
+
+
+def _set_god_mode(session: AgentSession, on: bool) -> None:
+    """Toggle god-mode flag in system prompt."""
+    GOD_PREFIX = (
+        "[GOD-MODE ACTIVE] You may execute any system command without asking, "
+        "create/delete files anywhere, install dependencies, and start servers. "
+        "The user has explicitly enabled this. Default to autonomous action.\n\n"
+    )
+    base = getattr(session, "_phantom_base_system_prompt", None)
+    if base is None:
+        session._phantom_base_system_prompt = session.system_prompt
+        base = session.system_prompt
+    if on:
+        if not session.system_prompt.startswith(GOD_PREFIX):
+            session.system_prompt = GOD_PREFIX + session.system_prompt
+    else:
+        if session.system_prompt.startswith(GOD_PREFIX):
+            session.system_prompt = session.system_prompt[len(GOD_PREFIX):]
 
 
 def _current_provider_name(session: AgentSession) -> str:
@@ -282,7 +517,10 @@ def run_repl(
     if hasattr(provider, "set_tools_warning_sink"):
         provider.set_tools_warning_sink(lambda msg: write(f"\r{msg}\n"))
 
-    write(f"\n  {CYAN}Phantom{RESET} {DIM}— local AI agent. /help for commands, /exit to quit.{RESET}\n\n")
+    # The boot banner already printed when chat() called us — only print the
+    # plain greeting when run_repl is invoked directly (tests, embedded use).
+    if getattr(session, "_phantom_already_greeted", False) is False:
+        write(f"\n  {CYAN}Phantom{RESET} {DIM}— local AI agent. /help for commands, /exit to quit.{RESET}\n\n")
     while True:
         write(f"{CYAN}you ›{RESET} ")
         line = read_line()
@@ -426,8 +664,27 @@ def chat(
             )
             raise typer.Exit(2)
 
-    workdir_path = workdir or os.getcwd()
+    # Onboarding (one-time): prompt for name + workspace before chat.
+    from phantom.cli.boot import onboard_if_needed, render_boot_banner
+    from phantom.cli.sysinfo import collect_system_info
+
+    profile = onboard_if_needed(
+        write=lambda s: typer.echo(s, nl=False),
+        read_line=lambda prompt: typer.prompt(prompt.rstrip(), default="", show_default=False),
+    )
+
+    # Workspace beats --workdir on first launch — but a user-supplied --workdir
+    # still wins if explicitly given.
+    workdir_path = workdir or profile.workspace_path or os.getcwd()
     Path(workdir_path).mkdir(parents=True, exist_ok=True)
+
+    # Boot banner with system snapshot.
+    render_boot_banner(
+        write=lambda s: sys.stdout.write(s) or sys.stdout.flush(),
+        profile=profile,
+        system=collect_system_info(profile.workspace_path),
+        animate=sys.stdout.isatty(),
+    )
 
     provider = _build_provider(
         name=provider_name, base_url=base_url, api_key=api_key, model=model,
@@ -443,6 +700,27 @@ def chat(
 
     tools = default_tools(workdir=workdir_path, memory=memory, namespace=namespace)
     session = AgentSession(provider=provider, tools=tools)
+
+    # Personalize the system prompt with whatever the user told us during
+    # onboarding. Empty values are skipped — the default prompt still works.
+    persona_lines = []
+    if profile.user_name:
+        persona_lines.append(f"The user's name is {profile.user_name}; address them by name when natural.")
+    if profile.assistant_name and profile.assistant_name != "Phantom":
+        persona_lines.append(f"You are called {profile.assistant_name}, not Phantom — answer to that name.")
+    if profile.workspace_path:
+        persona_lines.append(
+            f"Default project root is {profile.workspace_path}. When the user "
+            f"asks you to create a project without specifying a path, create it "
+            f"under there in a new sub-directory."
+        )
+    if persona_lines:
+        session.system_prompt = "\n".join(persona_lines) + "\n\n" + session.system_prompt
+    if profile.god_mode:
+        _set_god_mode(session, True)
+
+    # Tell run_repl not to print its own greeting; the boot banner did.
+    session._phantom_already_greeted = True
 
     try:
         rc = run_repl(session)

@@ -224,10 +224,15 @@ def test_default_tools_write_handler_creates_file(tmp_path: Path) -> None:
 
 
 def test_default_tools_write_handler_rejects_bad_args(tmp_path: Path) -> None:
+    """Bad args used to raise PhantomError, killing the agent's turn.
+    Since v1.1.10 the handler returns a JSON error blob with a `hint` field
+    so the model can recover and retry on the next round."""
     tools = default_tools(workdir=str(tmp_path))
     write_tool = next(t for t in tools if t.name == "write_file")
-    with pytest.raises(Exception):
-        write_tool.handler({"path": "", "text": "x"})
+    result = write_tool.handler({"path": "", "text": "x"})
+    parsed = json.loads(result)
+    assert "error" in parsed
+    assert "hint" in parsed
 
 
 def test_default_tools_read_handler_round_trip(tmp_path: Path) -> None:
