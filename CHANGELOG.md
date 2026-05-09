@@ -13,6 +13,50 @@ The major version cadence:
 
 ---
 
+## [1.1.17] — 2026-05-09 — /preset + /voice + /dashboard + /doctor + /plugins
+
+Patch release. Triggered by the v1.1.16 user report: "I don't see any
+voice models or anything here that was added in the software" + "let
+me load the openrouter model". Five new slash commands surface
+already-built features that were unreachable from inside chat.
+
+### Added
+
+* **`/preset <name>`** — register a curated provider in one step. Asks
+  for the API key inline (or uses the env var if exported). Skips the
+  multi-step `/add` wizard.
+* **`/presets`** (or `/preset` with no arg) — list all curated
+  presets: nvidia, groq, openrouter, together, fireworks, mistral,
+  cerebras, deepseek, perplexity, deepinfra, xai, ollama, lmstudio,
+  vllm-local, github. Free-tier and local-only entries are flagged.
+* **`/voice` / `/dictate`** — explains how to launch `phantom dictate`
+  (Pro voice transcription via Whisper) from a fresh terminal.
+* **`/dashboard`** — explains how to launch the web dashboard
+  (chat, sessions, plans, costs, plugins on :8000).
+* **`/doctor`** — inline host capability report: which sandbox
+  backend is selected, which others are available. No need to leave
+  chat.
+* **`/plugins`** — list discovered plugins with their version,
+  enabled state, and capabilities. Discovers from
+  `phantom.plugins.loader` so it finds installed first-party plugins
+  (clock, code-review, code-search, gh-search, github-pr, todo,
+  weather, web-screenshot).
+* `/help` is updated with a "tools" group and the preset commands.
+
+### Tests
+
+* 11 new in `phantom/tests/test_v1_1_17_slashes.py` covering
+  `/presets` listing all, `/preset` no-arg behaving like `/presets`,
+  `/preset ollama` registering without prompting (local-only),
+  unknown preset warning, `OPENROUTER_API_KEY` env var skipping the
+  prompt, `/voice` + `/dictate` aliasing, `/dashboard` instructions,
+  `/doctor` running without crash on this host, `/plugins` listing
+  or reporting empty without traceback, `/help` listing every new
+  command.
+* Suite: 2384 passed, 0 failed.
+
+---
+
 ## [1.1.16] — 2026-05-09 — Act-don't-narrate prompts + 429 retry + think-tag stripping
 
 Patch release. Triggered by the v1.1.15 user session: even with dual

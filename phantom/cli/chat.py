@@ -52,15 +52,18 @@ SLASH_COMMANDS = {
     "/exit", "/quit",
     "/reset", "/history", "/help",
     "/model", "/models", "/providers",
-    "/add",
+    "/add", "/preset", "/presets",
     "/smart",
     "/name", "/workspace",
     "/buy", "/license", "/install-license", "/change-license",
     "/god-mode",
     "/memory",
     "/uninstall",
-    "/system",
+    "/system", "/doctor",
     "/coder", "/executor", "/dual",
+    "/voice", "/dictate",
+    "/dashboard",
+    "/plugins",
 }
 
 
@@ -282,6 +285,8 @@ def _handle_slash(
         write(f"  {CYAN}/model <name>{RESET} {DIM}— switch to a registered provider{RESET}\n")
         write(f"  {CYAN}/models{RESET} {DIM}— list registered providers (alias /providers){RESET}\n")
         write(f"  {CYAN}/add{RESET} {DIM}— add a new provider via the wizard{RESET}\n")
+        write(f"  {CYAN}/preset <name>{RESET} {DIM}— register a curated provider in one step{RESET}\n")
+        write(f"  {CYAN}/presets{RESET} {DIM}— list all curated presets (nvidia, openrouter, groq, …){RESET}\n")
         write(f"  {CYAN}/smart [on|off]{RESET} {DIM}— toggle prompt-expansion mode{RESET}\n")
         write(f"  {DIM}── dual-model (planner + executor) ──{RESET}\n")
         write(f"  {CYAN}/coder <provider|model>{RESET} {DIM}— set the coder model{RESET}\n")
@@ -298,6 +303,11 @@ def _handle_slash(
         write(f"  {CYAN}/buy{RESET} {DIM}— Pro lifetime licence (₹999, 3 devices){RESET}\n")
         write(f"  {CYAN}/install-license <PHC-...>{RESET} {DIM}— activate a key{RESET}\n")
         write(f"  {CYAN}/change-license <PHC-...>{RESET} {DIM}— replace current key{RESET}\n")
+        write(f"  {DIM}── tools ──{RESET}\n")
+        write(f"  {CYAN}/voice{RESET} {DIM}— voice dictation (Whisper) [Pro]{RESET}\n")
+        write(f"  {CYAN}/dashboard{RESET} {DIM}— web UI on :8000 (chat, sessions, plans, costs){RESET}\n")
+        write(f"  {CYAN}/doctor{RESET} {DIM}— host capability report (sandbox backends){RESET}\n")
+        write(f"  {CYAN}/plugins{RESET} {DIM}— list discovered plugins{RESET}\n")
         write(f"  {DIM}── danger ──{RESET}\n")
         write(f"  {CYAN}/uninstall{RESET} {DIM}— remove ~/.phantom/ (asks confirmation){RESET}\n")
         return True
@@ -506,6 +516,21 @@ def _handle_slash(
             write(f"  {DIM}enable with: /dual on{RESET}\n")
         return True
 
+    if head in ("/preset", "/presets"):
+        return _handle_preset(arg, write, head=head)
+
+    if head in ("/voice", "/dictate"):
+        return _handle_voice(arg, write)
+
+    if head == "/dashboard":
+        return _handle_dashboard(arg, write)
+
+    if head == "/doctor":
+        return _handle_doctor(write)
+
+    if head == "/plugins":
+        return _handle_plugins(write)
+
     if head == "/dual":
         from phantom.profile import load_profile, save_profile
         profile = load_profile()
@@ -534,6 +559,145 @@ def _handle_slash(
         return True
 
     return False
+
+
+def _handle_preset(arg: str, write: Callable[[str], None], *, head: str = "/preset") -> bool:
+    """`/preset <name>` registers a curated provider in one step. Asks
+    interactively for the API key. `/presets` (plural) lists them."""
+    DIM = "\033[2m"; CYAN = "\033[36m"; GREEN = "\033[32m"
+    YELLOW = "\033[33m"; RESET = "\033[0m"
+    from phantom.config.presets import PRESETS, get_preset
+    if head == "/presets" or (head == "/preset" and not arg):
+        write(f"  {DIM}available presets:{RESET}\n")
+        for p in PRESETS:
+            free_hint = ""
+            if p.name in ("nvidia", "groq", "openrouter", "github"):
+                free_hint = f"  {DIM}(free tier){RESET}"
+            elif p.name in ("ollama", "lmstudio", "vllm-local"):
+                free_hint = f"  {DIM}(local, no key){RESET}"
+            write(f"    {CYAN}{p.name:<12}{RESET} {p.model:<48}{free_hint}\n")
+        write(f"  {DIM}usage: /preset <name>{RESET}\n")
+        return True
+
+    preset = get_preset(arg.strip())
+    if preset is None:
+        write(f"{YELLOW}unknown preset: {arg!r}{RESET}\n")
+        write(f"  {DIM}list with /presets{RESET}\n")
+        return True
+
+    api_key = ""
+    if preset.name not in ("ollama", "lmstudio", "vllm-local"):
+        existing_env = os.environ.get(preset.api_key_env, "")
+        if existing_env:
+            write(f"  {DIM}using {preset.api_key_env} from environment{RESET}\n")
+        else:
+            try:
+                from typer import prompt as _typer_prompt
+                api_key = _typer_prompt(
+                    f"  paste API key for {preset.name} (Enter to set ${preset.api_key_env} later)",
+                    default="", show_default=False,
+                ).strip()
+            except Exception:
+                api_key = ""
+
+    registry = ProviderRegistry.load()
+    candidate = preset.name
+    n = 2
+    while registry.get(candidate) is not None:
+        candidate = f"{preset.name}-{n}"
+        n += 1
+        if n > 99:
+            break
+    try:
+        registry.add(CustomProvider(
+            name=candidate,
+            base_url=preset.base_url,
+            model=preset.model,
+            api_key_env=preset.api_key_env,
+            api_key_inline=api_key,
+        ))
+    except ValueError as e:
+        write(f"  failed: {e}\n")
+        return True
+    write(f"{GREEN}✓{RESET} registered preset {CYAN}{candidate}{RESET} → {preset.model}\n")
+    write(f"  {DIM}use it with:{RESET} /model {candidate}\n")
+    return True
+
+
+def _handle_voice(arg: str, write: Callable[[str], None]) -> bool:
+    DIM = "\033[2m"; YELLOW = "\033[33m"; CYAN = "\033[36m"; RESET = "\033[0m"
+    write(f"  {CYAN}phantom voice / dictate{RESET}\n")
+    write(f"  {DIM}records audio and transcribes via Whisper.{RESET}\n")
+    write(f"  {DIM}this is a Pro feature; run from a fresh terminal:{RESET}\n")
+    write(f"\n    {CYAN}phantom dictate{RESET}\n\n")
+    write(f"  {DIM}requires:{RESET} sox / arecord / parecord on PATH, plus faster-whisper.\n")
+    write(f"  {DIM}status:{RESET} run {CYAN}/license{RESET} to check Pro tier.\n")
+    if arg:
+        write(f"\n  {YELLOW}note:{RESET} `/voice` doesn't accept arguments inside chat — dictation runs as a separate command.\n")
+    return True
+
+
+def _handle_dashboard(arg: str, write: Callable[[str], None]) -> bool:
+    DIM = "\033[2m"; CYAN = "\033[36m"; GREEN = "\033[32m"; YELLOW = "\033[33m"; RESET = "\033[0m"
+    write(f"  {CYAN}phantom dashboard{RESET}\n")
+    write(f"  {DIM}web UI on http://127.0.0.1:8000 — chat, sessions, plans, costs, plugins.{RESET}\n")
+    write(f"\n  start it from a fresh terminal so it doesn't block this REPL:\n")
+    write(f"\n    {CYAN}phantom dashboard{RESET}\n")
+    write(f"    {CYAN}phantom dashboard --port 9000{RESET}        {DIM}# alternate port{RESET}\n")
+    write(f"    {CYAN}phantom dashboard --base-url ... --model ...{RESET}  {DIM}# wire a provider{RESET}\n")
+    return True
+
+
+def _handle_doctor(write: Callable[[str], None]) -> bool:
+    """Inline a compact host capability report."""
+    DIM = "\033[2m"; CYAN = "\033[36m"; GREEN = "\033[32m"; YELLOW = "\033[33m"; RESET = "\033[0m"
+    try:
+        from phantom.cli.doctor import build_report
+    except Exception as e:
+        write(f"{YELLOW}doctor module unavailable: {e}{RESET}\n")
+        return True
+    try:
+        report = build_report()
+    except Exception as e:
+        write(f"{YELLOW}doctor build failed: {e}{RESET}\n")
+        return True
+    selected = report.get("selected") or "(none)"
+    write(f"  {DIM}sandbox:{RESET}  {CYAN}{selected}{RESET}\n")
+    backends = report.get("backends") or []
+    for entry in backends:
+        if isinstance(entry, dict):
+            name = entry.get("name", "?")
+            ok = bool(entry.get("available"))
+        else:
+            name, ok = str(entry), True
+        mark = f"{GREEN}✓{RESET}" if ok else f"{DIM}—{RESET}"
+        write(f"    {mark} {name}\n")
+    if report.get("selected") is None:
+        write(f"  {YELLOW}no sandbox backend available — running in passthrough mode (no isolation){RESET}\n")
+    return True
+
+
+def _handle_plugins(write: Callable[[str], None]) -> bool:
+    DIM = "\033[2m"; CYAN = "\033[36m"; GREEN = "\033[32m"; YELLOW = "\033[33m"; RESET = "\033[0m"
+    try:
+        from phantom.plugins.loader import PluginLoader
+        from phantom.plugins.registry import PluginRegistry
+        loaded = PluginLoader().discover()
+        registry = PluginRegistry.load()
+    except Exception as e:
+        write(f"{YELLOW}plugin layer unavailable: {e}{RESET}\n")
+        return True
+    if not loaded:
+        write(f"  {DIM}no plugins discovered{RESET}\n")
+        write(f"  {DIM}install one with:{RESET} {CYAN}phantom plugin install <name>{RESET}\n")
+        return True
+    write(f"  {DIM}{'NAME':<16}{'VERSION':<10}{'ENABLED':<9}{'CAPABILITIES'}{RESET}\n")
+    for p in loaded:
+        caps = ",".join(sorted(c.value for c in p.manifest.capabilities)) or "-"
+        enabled = "yes" if registry.is_enabled(p.manifest.name) else "no"
+        mark = f"{GREEN}{enabled:<9}{RESET}" if enabled == "yes" else f"{DIM}{enabled:<9}{RESET}"
+        write(f"    {p.manifest.name:<16}{p.manifest.version:<10}{mark}{caps}\n")
+    return True
 
 
 def _resolve_provider_or_model_arg(arg: str, write: Callable[[str], None]) -> tuple[bool, str]:

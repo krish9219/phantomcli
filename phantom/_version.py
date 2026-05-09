@@ -8,11 +8,11 @@ from __future__ import annotations
 
 __all__ = ["__version__", "VERSION_TUPLE", "RELEASE_DATE"]
 
-__version__: str = "1.1.16"
+__version__: str = "1.1.17"
 
 # Parsed form for comparisons. Pre-release suffixes are stripped here; use
 # `packaging.version.Version` if you need full PEP 440 semantics.
-VERSION_TUPLE: tuple[int, int, int] = (1, 1, 16)
+VERSION_TUPLE: tuple[int, int, int] = (1, 1, 17)
 
 # Stamp updated by the release pipeline. ISO-8601 date.
 RELEASE_DATE: str = "2026-05-09"
