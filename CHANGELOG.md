@@ -13,6 +13,40 @@ The major version cadence:
 
 ---
 
+## [1.1.5] — 2026-05-09 — Interactive provider config
+
+Patch release. Removes the "now what?" moment after `phantom config
+provider custom <name>` printed `Missing argument`.
+
+### Added
+
+* **`phantom config setup`** — direct alias for the first-run wizard.
+  Same picker `phantom chat` shows on a clean install; useful when the
+  user is exploring `phantom config --help` and wants to add a provider
+  without going through chat.
+* **Interactive prompts** on `phantom config provider custom <name>` —
+  if `--base-url`, `--model`, or key flags are missing, the command
+  prompts for each. Existing flag-driven invocations keep working
+  unchanged.
+* **API-key prompt** on `phantom config provider preset <name>` — when
+  no `--key` is given and the preset's env var isn't set, prompt for
+  the key inline. Skipped for local-only presets (ollama, lmstudio,
+  vllm-local).
+* Both `custom` and `preset` now print whether the new entry became
+  the default, with the `phantom config provider use <name>` hint when
+  it didn't.
+
+### Tests
+
+* 8 new in `phantom/tests/test_provider_cmd_interactive.py` covering:
+  prompt firing for each missing flag, blank key skipping the prompt,
+  explicit flags bypassing all prompts, env-var presence skipping the
+  preset prompt, local-only presets skipping the prompt entirely,
+  `phantom config setup` running the wizard, and cancel-from-setup
+  exiting 2.
+
+---
+
 ## [1.1.4] — 2026-05-09 — Real `phantom update` command
 
 Patch release. Adds the missing self-update command. Existing installs

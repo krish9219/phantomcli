@@ -28,16 +28,37 @@ provider_app = typer.Typer(
 config_app.add_typer(provider_app, name="provider")
 
 
+@config_app.command("setup", help="Interactive first-run wizard — pick + save a default provider.")
+def setup_cmd() -> None:
+    """Run the same wizard `phantom chat` shows on a clean install."""
+    from phantom.cli.setup_wizard import run_wizard
+    result = run_wizard()
+    if result.cancelled:
+        raise typer.Exit(2)
+
+
 @provider_app.command("custom", help="Add (or overwrite) a custom OpenAI-compatible provider.")
 def add_custom(
     name: str = typer.Argument(..., help="lowercase identifier, e.g. 'vllm-local'"),
-    base_url: str = typer.Option(..., "--base-url", help="https://… (no trailing /v1 needed)"),
-    model: str = typer.Option(..., "--model", help="model id the endpoint expects"),
+    base_url: Optional[str] = typer.Option(None, "--base-url", help="https://… (no trailing /v1 needed)"),
+    model: Optional[str] = typer.Option(None, "--model", help="model id the endpoint expects"),
     key_env: Optional[str] = typer.Option(None, "--key-env", help="env var name holding the API key"),
     key: Optional[str] = typer.Option(None, "--key", help="inline API key (stored owner-only)"),
     overwrite: bool = typer.Option(False, "--force", help="overwrite an existing entry"),
 ) -> None:
-    """Register a custom provider in one command."""
+    """Register a custom provider. Prompts for any missing flag interactively."""
+    if not base_url:
+        base_url = typer.prompt("  base URL (https://…)").strip()
+    if not model:
+        model = typer.prompt("  model id (e.g. gpt-4o, meta/llama-3.3-70b-instruct)").strip()
+    if not key and not key_env:
+        entered = typer.prompt(
+            "  API key (Enter to skip if local / no key needed)",
+            default="", show_default=False,
+        ).strip()
+        if entered:
+            key = entered
+
     registry = ProviderRegistry.load()
     provider = CustomProvider(
         name=name,
@@ -52,6 +73,10 @@ def add_custom(
         typer.echo(f"failed: {e}", err=True)
         raise typer.Exit(2)
     typer.echo(f"  added provider: {name}  → {base_url}  (model={model})")
+    if registry.default_name == name:
+        typer.echo(f"  default provider: {name}")
+    else:
+        typer.echo(f"  set as default with: phantom config provider use {name}")
 
 
 @provider_app.command("preset", help="Add a pre-configured provider in one command (Together, Fireworks, Mistral, …).")
@@ -59,21 +84,43 @@ def add_preset(
     name: str = typer.Argument(..., help="preset name; see `phantom config provider presets`"),
     model: Optional[str] = typer.Option(None, "--model", help="override the preset's default model"),
     key_env: Optional[str] = typer.Option(None, "--key-env", help="override the env var name"),
+    key: Optional[str] = typer.Option(None, "--key", help="paste the API key inline (stored owner-only)"),
     overwrite: bool = typer.Option(False, "--force", help="overwrite an existing entry with the same name"),
 ) -> None:
-    """Register a popular OpenAI-compatible provider via its preset."""
+    """Register a popular OpenAI-compatible provider via its preset.
+
+    If neither --key nor an existing env var is found, prompt for the key
+    interactively (skipped for local-only presets like ollama / lmstudio).
+    """
+    import os as _os
     from phantom.config.presets import get_preset
 
     preset = get_preset(name)
     if preset is None:
         typer.echo(f"unknown preset: {name!r}. run `phantom config provider presets` to list", err=True)
         raise typer.Exit(2)
+
+    api_key_env = key_env or preset.api_key_env
+    api_key_inline = key or ""
+    if (
+        preset.name not in ("ollama", "lmstudio", "vllm-local")
+        and not api_key_inline
+        and not _os.environ.get(api_key_env, "")
+    ):
+        entered = typer.prompt(
+            f"  API key for {preset.name} (Enter to set ${api_key_env} later)",
+            default="", show_default=False,
+        ).strip()
+        if entered:
+            api_key_inline = entered
+
     registry = ProviderRegistry.load()
     provider = CustomProvider(
         name=preset.name,
         base_url=preset.base_url,
         model=model or preset.model,
-        api_key_env=key_env or preset.api_key_env,
+        api_key_env=api_key_env,
+        api_key_inline=api_key_inline,
     )
     try:
         registry.add(provider, overwrite=overwrite)
@@ -82,6 +129,10 @@ def add_preset(
         raise typer.Exit(2)
     typer.echo(f"  added preset: {preset.name}  → {preset.base_url}  (model={provider.model}, key=${provider.api_key_env})")
     typer.echo(f"  homepage: {preset.homepage}")
+    if registry.default_name == preset.name:
+        typer.echo(f"  default provider: {preset.name}")
+    else:
+        typer.echo(f"  set as default with: phantom config provider use {preset.name}")
 
 
 @provider_app.command("presets", help="List available provider presets.")
