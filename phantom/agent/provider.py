@@ -220,7 +220,7 @@ class OpenAICompatibleProvider:
         api_key: str,
         model: str,
         name: str = "openai-compat",
-        timeout_s: float = 120.0,
+        timeout_s: float = 0.0,  # 0 means: read PHANTOM_HTTP_TIMEOUT_S, default 60
         client: Any = None,  # httpx.Client; injected by tests
         tools_supported: bool = True,
     ) -> None:
@@ -228,6 +228,12 @@ class OpenAICompatibleProvider:
             raise PhantomError("provider requires base_url")
         if not model:
             raise PhantomError("provider requires model")
+        import os as _os
+        if timeout_s <= 0:
+            try:
+                timeout_s = float(_os.environ.get("PHANTOM_HTTP_TIMEOUT_S", "60"))
+            except ValueError:
+                timeout_s = 60.0
         self.name = name
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -294,7 +300,17 @@ class OpenAICompatibleProvider:
         url = f"{self._base_url}/chat/completions"
         try:
             response = self._http().post(url, headers=headers, json=payload)
-        except Exception as exc:  # network errors
+        except Exception as exc:
+            # httpx raises ReadTimeout / ConnectTimeout subclasses of TimeoutException.
+            cls = type(exc).__name__
+            if "Timeout" in cls or "timeout" in str(exc).lower():
+                raise PhantomError(
+                    f"provider {self.name!r} timed out after {self._timeout:.0f}s "
+                    f"(model={self._model!r}). The model may be stuck or NVIDIA's "
+                    f"gateway is holding the connection. Try /reset and switching "
+                    f"to a faster model with /model meta_llama-3.3-70b-instruct, "
+                    f"or raise PHANTOM_HTTP_TIMEOUT_S to allow longer waits."
+                ) from exc
             raise PhantomError(f"provider {self.name!r} request failed: {exc}") from exc
         if response.status_code >= 400:
             body = response.text[:300]

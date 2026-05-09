@@ -13,6 +13,36 @@ The major version cadence:
 
 ---
 
+## [1.1.13] — 2026-05-09 — HTTP timeout 120s → 60s + actionable timeout error
+
+Patch release. Triggered by the v1.1.12 user report: a single LLM call
+hung for 11+ minutes on kimi-k2.6 because the httpx default of 120s
+wasn't being hit (NVIDIA's gateway kept the connection alive long
+enough that the round-level wall-clock budget couldn't help).
+
+### Fixed
+
+* **Default HTTP timeout 120s → 60s.** A model that takes longer than
+  60s to start streaming a response is almost certainly stuck.
+* **`PHANTOM_HTTP_TIMEOUT_S` env var** — override the default for
+  legitimately slow endpoints or local models.
+* **Actionable timeout error.** When httpx raises a Timeout exception,
+  the user now sees: `provider 'openai-compat' timed out after 60s
+  (model='kimi-k2.6'). The model may be stuck or NVIDIA's gateway is
+  holding the connection. Try /reset and switching to a faster model
+  with /model meta_llama-3.3-70b-instruct, or raise
+  PHANTOM_HTTP_TIMEOUT_S to allow longer waits.` Non-timeout errors
+  keep the old "request failed" message.
+
+### Tests
+
+* 6 new in `phantom/tests/test_http_timeout.py` covering default 60s,
+  env override, explicit-arg-wins-over-env, invalid-env-falls-back,
+  timeout-error contents, non-timeout error preserves old message.
+* Suite: 2331 passed, 0 failed.
+
+---
+
 ## [1.1.12] — 2026-05-09 — Bounded tool-loop + live tool visibility + Ctrl+C abort
 
 Patch release. Triggered by the v1.1.11 user report: kimi-k2.6 went
