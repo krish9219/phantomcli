@@ -66,6 +66,43 @@ SLASH_COMMANDS = {
 _SLASH_EXIT = object()
 
 
+def _personalize_system_prompt(prompt: str, profile: Any) -> str:
+    """Substitute the chosen assistant_name into the default prompt and
+    append a short header introducing the user + workspace.
+
+    Substituting "Phantom" → assistant_name in-place beats prepending
+    a contradictory "you are called X, not Phantom" line — the model
+    weighed the original "You are Phantom" higher in v1.1.10 testing.
+    """
+    name = (getattr(profile, "assistant_name", "") or "").strip() or "Phantom"
+    user_name = (getattr(profile, "user_name", "") or "").strip()
+    workspace = (getattr(profile, "workspace_path", "") or "").strip()
+
+    body = prompt
+    # Replace "You are Phantom" exactly once (at the prompt's start).
+    if name != "Phantom":
+        body = body.replace("You are Phantom,", f"You are {name},", 1)
+        # Subsequent mentions of "Phantom" in the prompt body are tool
+        # references and product names — leave them alone.
+
+    persona_header = []
+    if user_name:
+        persona_header.append(
+            f"The user's name is {user_name}. Address them by name when natural; "
+            f"do not call yourself 'Phantom' if your name is not Phantom."
+        )
+    if workspace:
+        persona_header.append(
+            f"Default workspace: {workspace}. When the user asks you to create "
+            f"a project without specifying a path, create it under this "
+            f"directory in a new sub-folder."
+        )
+
+    if persona_header:
+        return "\n".join(persona_header) + "\n\n" + body
+    return body
+
+
 _SMART_PREFIX = (
     "You are an expert engineer. Before responding, first restate the user's "
     "request as a precise spec: list the explicit requirements, identify any "
@@ -521,8 +558,22 @@ def run_repl(
     # plain greeting when run_repl is invoked directly (tests, embedded use).
     if getattr(session, "_phantom_already_greeted", False) is False:
         write(f"\n  {CYAN}Phantom{RESET} {DIM}— local AI agent. /help for commands, /exit to quit.{RESET}\n\n")
+
+    # Personalised prompts: use the user's name (if any) instead of "you",
+    # and the assistant's chosen name instead of literal "phantom".
+    from phantom.profile import load_profile as _load_profile
+    user_label = "you"
+    assistant_label = "phantom"
+    try:
+        _prof = _load_profile()
+        if _prof.user_name:
+            user_label = _prof.user_name
+        if _prof.assistant_name:
+            assistant_label = _prof.assistant_name.lower()
+    except Exception:
+        pass
     while True:
-        write(f"{CYAN}you ›{RESET} ")
+        write(f"{CYAN}{user_label} ›{RESET} ")
         line = read_line()
         if not line:
             # EOF (Ctrl-D / pipe closed): exit gracefully.
@@ -560,7 +611,7 @@ def run_repl(
             write(f"{DIM}error:{RESET} {exc}\n")
             continue
         spinner.stop()
-        write(f"{GREEN}phantom ›{RESET} {reply}\n\n")
+        write(f"{GREEN}{assistant_label} ›{RESET} {reply}\n\n")
 
 
 def resolve_chat_config(
@@ -702,20 +753,13 @@ def chat(
     session = AgentSession(provider=provider, tools=tools)
 
     # Personalize the system prompt with whatever the user told us during
-    # onboarding. Empty values are skipped — the default prompt still works.
-    persona_lines = []
-    if profile.user_name:
-        persona_lines.append(f"The user's name is {profile.user_name}; address them by name when natural.")
-    if profile.assistant_name and profile.assistant_name != "Phantom":
-        persona_lines.append(f"You are called {profile.assistant_name}, not Phantom — answer to that name.")
-    if profile.workspace_path:
-        persona_lines.append(
-            f"Default project root is {profile.workspace_path}. When the user "
-            f"asks you to create a project without specifying a path, create it "
-            f"under there in a new sub-directory."
-        )
-    if persona_lines:
-        session.system_prompt = "\n".join(persona_lines) + "\n\n" + session.system_prompt
+    # onboarding. The DEFAULT_SYSTEM_PROMPT starts with "You are Phantom..."
+    # — we substitute the chosen assistant_name in-place rather than prepend
+    # a contradictory header (the prepend lost to "You are Phantom" in the
+    # v1.1.10 user report — the model still answered as Phantom).
+    session.system_prompt = _personalize_system_prompt(
+        session.system_prompt, profile,
+    )
     if profile.god_mode:
         _set_god_mode(session, True)
 

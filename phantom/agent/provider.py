@@ -55,6 +55,59 @@ def _looks_like_tool_rejection(body: str) -> bool:
     return any(h in low for h in _TOOL_REJECTION_HINTS)
 
 
+# ─── inline tool-call extraction (kimi/minimax delimited format) ──────────────
+
+import re as _re  # local alias so the public re import stays where the body uses it
+
+_KIMI_BLOCK = _re.compile(
+    r"<\|tool_calls_section_begin\|>(.*?)<\|tool_calls_section_end\|>",
+    _re.DOTALL,
+)
+_KIMI_CALL = _re.compile(
+    r"<\|tool_call_begin\|>?\s*(.*?)\s*<\|tool_call_end\|>",
+    _re.DOTALL,
+)
+# Each call body looks like: ``functions.run_bash:{"command": "..."}``.
+_KIMI_CALL_HEAD = _re.compile(
+    r"^(?:functions\.)?(?P<name>[a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*(?P<json>\{.*\})\s*$",
+    _re.DOTALL,
+)
+
+
+def _extract_inline_tool_calls(text: str) -> tuple[list["ToolCall"], str]:
+    """Pull tool calls out of kimi/minimax-style delimited text.
+
+    Returns (calls, text_with_markers_stripped). If no markers are found,
+    returns ([], original_text). Each call gets a synthetic id so the
+    downstream tool-result message can reference it.
+    """
+    if not text or "<|tool_call" not in text:
+        return [], text
+
+    blocks = _KIMI_BLOCK.findall(text)
+    cleaned = _KIMI_BLOCK.sub("", text).strip()
+
+    calls: list[ToolCall] = []
+    for i, block in enumerate(blocks):
+        for j, raw in enumerate(_KIMI_CALL.findall(block)):
+            m = _KIMI_CALL_HEAD.search(raw.strip())
+            if not m:
+                continue
+            try:
+                args = json.loads(m.group("json"))
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(args, dict):
+                continue
+            calls.append(ToolCall(
+                id=f"inline-{i}-{j}",
+                name=m.group("name"),
+                arguments=args,
+            ))
+
+    return calls, cleaned
+
+
 __all__ = [
     "OpenAICompatibleProvider",
     "Provider",
@@ -311,6 +364,18 @@ class OpenAICompatibleProvider:
                 name=str(fn.get("name", "")),
                 arguments=args,
             ))
+
+        # Some NVIDIA-hosted models (kimi-k2.6, minimax) emit tool calls in
+        # their native delimiter format inside the text content instead of
+        # the OpenAI tool_calls array. Extract them so the agent loop can
+        # actually run them. The cleaned text (with the markers stripped)
+        # is what the user sees as the assistant turn.
+        if not calls:
+            extracted, cleaned = _extract_inline_tool_calls(text)
+            if extracted:
+                calls.extend(extracted)
+                text = cleaned
+
         return ProviderResponse(
             text=text,
             tool_calls=tuple(calls),

@@ -13,6 +13,44 @@ The major version cadence:
 
 ---
 
+## [1.1.11] — 2026-05-09 — Identity substitution + kimi tool-call parser
+
+Patch release. Three fixes from the v1.1.10 Ghost / Arvi Sir test.
+
+### Fixed
+
+* **Identity stuck on "Phantom"** — the default system prompt
+  hard-coded "You are Phantom, …", so prepending an "answer to the
+  name X" persona line made the model see contradictory instructions
+  and pick Phantom anyway. `_personalize_system_prompt` now
+  substitutes the chosen `assistant_name` directly into the
+  "You are X," opener (only the first occurrence; later mentions of
+  Phantom in the prompt body are product references and are left
+  alone).
+* **Kimi/minimax tool calls were ignored** — `moonshotai/kimi-k2.6`
+  emits tool calls inside delimited text:
+  `<|tool_calls_section_begin|><|tool_call_begin|>functions.run_bash:{...}<|tool_call_end|><|tool_calls_section_end|>`
+  instead of the OpenAI `tool_calls` array. The agent saw plain text
+  and never invoked the tool. `_extract_inline_tool_calls` now scans
+  the response, pulls each call into a `ToolCall`, and strips the
+  markers from the text so the user sees a clean assistant turn.
+* **REPL still said "you ›" / "phantom ›"** — both prompts now read
+  from the saved profile. After onboarding as Arvi Sir / Ghost the
+  prompts become `Arvi Sir ›` and `ghost ›`.
+
+### Tests
+
+* 13 new in `phantom/tests/test_personalization.py` covering name
+  substitution (assistant name → prompt opener, kept-default,
+  workspace + user_name header, blank profile no-op, only-first-
+  occurrence) and the kimi parser (single call, multiple calls in
+  one block, no markers, malformed JSON, optional `functions.`
+  prefix, end-to-end through `OpenAICompatibleProvider._parse`,
+  native `tool_calls` preserved when present).
+* Suite: 2318 passed, 0 failed.
+
+---
+
 ## [1.1.10] — 2026-05-09 — JARVIS boot, profile, and 9 new slash commands
 
 Patch release. Phantom now feels like a real assistant: it asks for
