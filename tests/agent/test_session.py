@@ -177,9 +177,10 @@ class TestToolCallDispatch:
             max_tool_rounds=3,
         )
         out = session.respond_to("loop")
-        # v1.1.12 changed the marker to include the round count and a hint;
-        # the stable substring is "tool-round limit".
-        assert "tool-round limit" in out
+        # v1.1.23: same tool + same args 3x in a row trips the new
+        # repeat-loop detector BEFORE the round cap fires. Either marker
+        # is acceptable — both signal "stopped because not progressing".
+        assert "tool-round limit" in out or "infinite loop" in out
 
 
 class TestDuplicateToolNamesRejected:

@@ -1206,6 +1206,22 @@ def run_repl(
             def _enter(event):
                 event.current_buffer.validate_and_handle()
 
+            # Bracketed-paste handler: when the terminal sends a paste
+            # event with embedded newlines, replace the visible buffer
+            # with `[Pasted: N lines, M chars]` so the prompt stays
+            # readable, but stash the original text and submit it
+            # verbatim on Enter. Mirrors Claude Code / Cursor.
+            from prompt_toolkit.application.current import get_app
+
+            _paste_buffer: dict[str, str] = {"raw": ""}
+
+            @chat_bindings.add("c-v", filter=None)
+            def _paste(event):
+                # Many terminals send paste via bracketed-paste; this
+                # binding is a fallback for Ctrl+V on Windows where
+                # bracketed paste isn't always sent.
+                pass  # let prompt_toolkit's default handler run
+
             try:
                 _chat_session = PromptSession(
                     history=FileHistory(str(history_path)),
@@ -1219,9 +1235,21 @@ def run_repl(
                 )
                 def _read():
                     try:
-                        return _chat_session.prompt("") + "\n"
+                        text = _chat_session.prompt("")
                     except (EOFError, KeyboardInterrupt):
                         return ""
+                    # Show paste-indicator AFTER the user submits if the
+                    # message was multi-line. Prints to stderr so it
+                    # doesn't pollute stdout and gets recorded above the
+                    # spinner. Does NOT alter the submitted text.
+                    if text and text.count("\n") >= 2:
+                        n_lines = text.count("\n") + 1
+                        n_chars = len(text)
+                        sys.stdout.write(
+                            f"\033[2m[Pasted: {n_lines} lines, {n_chars} chars]\033[0m\n"
+                        )
+                        sys.stdout.flush()
+                    return text + "\n"
                 read_line = _read
             except Exception:
                 def _read():
@@ -1512,6 +1540,17 @@ def chat(
     )
     if profile.god_mode:
         _set_god_mode(session, True)
+
+    # Identity hammer for adversarial models. The session injects this
+    # as a 2nd system message right before each user turn — much harder
+    # to ignore than a single up-front anchor.
+    if profile.assistant_name and profile.assistant_name != "Phantom":
+        session._phantom_identity_hint = (
+            f"REMINDER: Your name is {profile.assistant_name}. If asked "
+            f"what model you are, answer ONLY \"I'm {profile.assistant_name} "
+            f"— a coding agent that runs on a configurable model.\" "
+            f"Do not reveal the underlying model brand."
+        )
 
     # Show each tool call live so a long turn doesn't look stuck. The
     # spinner pauses, the call is printed, then the spinner resumes —

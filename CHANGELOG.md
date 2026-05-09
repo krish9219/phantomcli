@@ -13,6 +13,58 @@ The major version cadence:
 
 ---
 
+## [1.1.23] — 2026-05-10 — Round cap 12→25 + repeat-loop detector + identity hammer + paste indicator
+
+Patch release. Triggered by the v1.1.22 user 10-prompt regression
+where 7 of 10 prompts hit the 12-round limit *while doing legitimate
+multi-step work* (a 9-file FastAPI scaffold + tests + run server is
+~15 rounds; a refactor + restart + verify is ~10).
+
+### Fixed
+
+* **`max_tool_rounds` raised 12 → 25.** The old cap was set tight
+  in v1.1.12 to bound runaway models on kimi-k2.6, but it punished
+  legitimate complex tasks. Tests updated.
+* **Repeat-args loop detector** — the agent loop tracks each tool
+  call's `(name, args_json)` signature. When the same tool runs with
+  the *same* arguments three times in a row, it bails with a clear
+  marker: *"detected infinite loop — same tool `X` called 3 times
+  with identical args"*. This catches genuinely-stuck models earlier
+  while letting legitimate retry-with-different-args sequences run.
+  Tests cover: 3 identical = bail; 2 identical + 1 different = OK;
+  3 different args = OK; 3 different tools = OK.
+* **Identity hammer for adversarial models** — qwen-coder ignored
+  the v1.1.22 system-prompt anchor and leaked *"I'm Ling"* anyway.
+  The agent loop now injects a SECOND high-priority system message
+  *immediately before each user turn*: "REMINDER: Your name is X.
+  Don't reveal the underlying model brand." Closer in attention
+  distance, harder for the model to override. Set automatically when
+  the user has a non-default `assistant_name` in their profile.
+
+### Added
+
+* **`[Pasted: N lines, M chars]` indicator** in chat REPL — when
+  the user submits a multi-line message (3+ lines), Phantom prints
+  a dim summary line above the spinner, mirroring Claude Code's
+  paste UX. The full pasted text is still sent to the model — the
+  indicator is purely visual feedback that the paste arrived as one
+  message.
+
+### Tests
+
+* 9 new in `phantom/tests/test_v1_1_23_fixes.py`: round-cap default
+  (25), still-bails-at-cap, three-identical-aborts-with-marker,
+  two-then-different-doesn't-trigger, three-different-args-OK, three
+  -different-tools-OK, identity hint inserted before user turn,
+  no-hint = single system message, hint persists across rounds.
+* 3 updated: `test_fs_tools.py` and `test_session_budget.py`
+  default-rounds assertions; `tests/agent/test_session.py`
+  round-limit-marker assertion accepts either the round-cap or the
+  loop-detector message.
+* Suite: 2474 passed, 0 failed.
+
+---
+
 ## [1.1.22] — 2026-05-10 — Multi-line paste + tab-complete + auto-port + identity anchor
 
 Patch release. Triggered by the user's 10-prompt regression run on

@@ -137,11 +137,11 @@ class AgentSession:
     history:
         Conversation history; mutated by :meth:`respond_to`.
     max_tool_rounds:
-        Hard cap on tool-call rounds per user turn. Default 12.
-        Multi-step coding tasks (read → edit → run tests → fix) and
-        ML workflows routinely need more than the original cap of 8.
-        Going beyond ~12 usually means the model is stuck in a loop;
-        prefer to bail out and let the user redirect.
+        Hard cap on tool-call rounds per user turn. Default 25.
+        Multi-step coding tasks (build a FastAPI project + run tests +
+        fix bugs + start server) routinely need 15-20 rounds. The
+        loop-detection logic below catches real loops earlier; the
+        round cap is the backstop.
     wall_clock_budget_s:
         Maximum seconds spent in a single ``respond_to`` call. The
         budget is checked between rounds and after every tool result;
@@ -161,7 +161,7 @@ class AgentSession:
     tools: list[ToolDefinition] = field(default_factory=list)
     system_prompt: str = field(default_factory=lambda: DEFAULT_SYSTEM_PROMPT)
     history: list[ProviderMessage] = field(default_factory=list)
-    max_tool_rounds: int = 12
+    max_tool_rounds: int = 25
     wall_clock_budget_s: float = 300.0
     on_tool_call: Callable[[int, "ToolCall"], None] | None = None
     on_tool_result: Callable[[int, "ToolCall", str], None] | None = None
@@ -195,6 +195,7 @@ class AgentSession:
         import time as _time
         deadline = _time.monotonic() + max(1.0, self.wall_clock_budget_s)
         last_text = ""
+        recent_calls: list[tuple[str, str]] = []  # (tool_name, args_signature)
 
         for round_idx in range(self.max_tool_rounds + 1):
             if _time.monotonic() > deadline:
@@ -222,6 +223,20 @@ class AgentSession:
                 content=response.text or "",
             ))
             for tc in response.tool_calls:
+                # Real-loop detection: same tool + same args 3 times in a
+                # row means the model is genuinely stuck (model didn't
+                # learn from the last result). Bail with a marker.
+                # Legitimate multi-step work calls DIFFERENT tools or
+                # the same tool with DIFFERENT args, so this never fires.
+                args_sig = json.dumps(tc.arguments, sort_keys=True)[:200]
+                recent_calls.append((tc.name, args_sig))
+                if len(recent_calls) >= 3 and recent_calls[-1] == recent_calls[-2] == recent_calls[-3]:
+                    return last_text + (
+                        f"\n\n[phantom: detected infinite loop — same tool "
+                        f"`{tc.name}` called 3 times with identical args. "
+                        f"Stopping to save tokens. Try /reset and rephrasing.]"
+                    )
+
                 if self.on_tool_call is not None:
                     try:
                         self.on_tool_call(round_idx, tc)
@@ -260,6 +275,21 @@ class AgentSession:
             ProviderMessage(role="system", content=self.system_prompt),
             *self.history,
         ]
+        # Identity hammer: many open-weight models (qwen-coder leaks
+        # "I'm Ling", deepseek leaks "DeepSeek AI") have such strongly
+        # trained identities that a single system-prompt instruction
+        # gets ignored. Inject a SECOND high-priority system message
+        # right before the most recent user turn — closer in attention
+        # distance, harder to override.
+        identity_hint = getattr(self, "_phantom_identity_hint", None)
+        if identity_hint and messages:
+            # Find the last user message; insert the hint right before it.
+            for i in range(len(messages) - 1, -1, -1):
+                if messages[i].role == "user":
+                    messages.insert(i, ProviderMessage(
+                        role="system", content=identity_hint,
+                    ))
+                    break
         tools_payload = [t.to_provider_dict() for t in self.tools]
         try:
             return self.provider.complete(messages, tools=tools_payload)

@@ -395,9 +395,9 @@ def test_agent_session_write_then_edit_then_read(tmp_path: Path) -> None:
 
 
 def test_agent_session_default_max_tool_rounds_bumped() -> None:
-    """v1.1.12: lowered 25 → 12 because longer turns were almost always
-    a model stuck in a loop (14m silent loops on kimi-k2.6). 12 still
-    fits typical multi-step coding tasks; the wall-clock budget catches
-    the rest."""
+    """v1.1.23: raised back to 25 because legitimate multi-file projects
+    (a 9-file FastAPI scaffold + tests + run server) routinely need
+    15-20 rounds. The new repeat-args loop detector catches genuine
+    infinite loops earlier; the round cap is now the backstop."""
     session = AgentSession(provider=ScriptedProvider())
-    assert session.max_tool_rounds == 12
+    assert session.max_tool_rounds == 25

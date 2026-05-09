@@ -44,12 +44,13 @@ def _final_response(text: str) -> ProviderResponse:
 
 # ─── default max_tool_rounds is now 12 ────────────────────────────────────────
 
-def test_default_max_tool_rounds_is_12():
+def test_default_max_tool_rounds_is_25():
+    """v1.1.23: raised 12 → 25, paired with a repeat-args loop detector."""
     session = AgentSession(
         provider=ScriptedProvider.from_responses([_final_response("hi")]),
         tools=[_identity_tool()],
     )
-    assert session.max_tool_rounds == 12
+    assert session.max_tool_rounds == 25
 
 
 # ─── tool-round limit returns partial result with marker ─────────────────────
