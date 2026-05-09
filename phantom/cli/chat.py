@@ -1206,21 +1206,11 @@ def run_repl(
             def _enter(event):
                 event.current_buffer.validate_and_handle()
 
-            # Bracketed-paste handler: when the terminal sends a paste
-            # event with embedded newlines, replace the visible buffer
-            # with `[Pasted: N lines, M chars]` so the prompt stays
-            # readable, but stash the original text and submit it
-            # verbatim on Enter. Mirrors Claude Code / Cursor.
-            from prompt_toolkit.application.current import get_app
-
-            _paste_buffer: dict[str, str] = {"raw": ""}
-
-            @chat_bindings.add("c-v", filter=None)
-            def _paste(event):
-                # Many terminals send paste via bracketed-paste; this
-                # binding is a fallback for Ctrl+V on Windows where
-                # bracketed paste isn't always sent.
-                pass  # let prompt_toolkit's default handler run
+            # Bracketed-paste handler: prompt_toolkit handles paste events
+            # natively in multi-line mode, so we don't need a custom Ctrl+V
+            # binding. The visual `[Pasted: N lines]` summary is printed
+            # below, AFTER the user submits, so the buffer stays clean
+            # without needing terminal-trickery during input.
 
             try:
                 _chat_session = PromptSession(

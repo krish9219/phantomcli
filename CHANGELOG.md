@@ -13,6 +13,32 @@ The major version cadence:
 
 ---
 
+## [1.1.24] — 2026-05-10 — Hot fix: `phantom chat` startup crash on Windows
+
+Hot fix. v1.1.23 shipped a Ctrl+V key-binding stub with `filter=None`
+which prompt_toolkit rejects with `TypeError: Expecting a bool or a
+Filter instance.`. The stub was meant as a future hook for terminals
+that don't send bracketed-paste — but prompt_toolkit handles paste
+natively in multiline mode anyway, so the stub was both broken AND
+unnecessary.
+
+### Fixed
+
+* Removed the `@chat_bindings.add("c-v", filter=None)` stub. `phantom
+  chat` now starts cleanly on Windows with prompt_toolkit installed.
+* Multi-line paste behaviour is unchanged from v1.1.23 — bracketed-
+  paste mode handles clipboard pastes with embedded newlines as a
+  single message, and the `[Pasted: N lines, M chars]` indicator
+  prints after submission.
+
+### Tests
+
+* No new tests; the failure was at import-time during `chat()`
+  startup so all unit tests passed but the binary crashed on first
+  use. Suite: 2474 passed, 0 failed.
+
+---
+
 ## [1.1.23] — 2026-05-10 — Round cap 12→25 + repeat-loop detector + identity hammer + paste indicator
 
 Patch release. Triggered by the v1.1.22 user 10-prompt regression
