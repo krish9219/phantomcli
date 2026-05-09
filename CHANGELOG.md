@@ -13,6 +13,34 @@ The major version cadence:
 
 ---
 
+## [1.1.9] — 2026-05-09 — base_url normalization (auto-strip /chat/completions)
+
+Patch release. Triggered by the v1.1.8 user report: pasting
+`https://integrate.api.nvidia.com/v1/chat/completions` as the base
+URL produced 404s because the provider then built
+`…/v1/chat/completions/chat/completions`.
+
+### Fixed
+
+* **`normalize_base_url()`** strips trailing `/chat/completions`,
+  `/completions`, `/embeddings`, `/messages`, `/responses`, and
+  trailing slashes/whitespace from any base URL before it's saved.
+* `ProviderRegistry.add()` runs the normalizer before persisting, so
+  pasting the full endpoint URL from a docs page just works.
+* `ProviderRegistry.load()` runs the normalizer on every existing
+  entry and rewrites the file once if any cleanup happened. Healthy
+  files are not touched (no mtime churn).
+
+### Tests
+
+* 14 new in `phantom/tests/test_base_url_normalization.py` covering a
+  parametrised table of paste shapes (the exact NVIDIA paste, trailing
+  slashes, embeddings/responses/messages variants, localhost,
+  whitespace, already-clean), plus auto-strip on `add()`,
+  silent-repair on `load()`, and no-write when all entries are clean.
+
+---
+
 ## [1.1.8] — 2026-05-09 — /model + /add + /smart slash commands + tool-history scrub
 
 Patch release. Three fixes triggered by the v1.1.7 NVIDIA + minimax test:

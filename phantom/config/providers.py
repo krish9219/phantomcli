@@ -20,11 +20,41 @@ from typing import Any
 __all__ = [
     "CustomProvider",
     "ProviderRegistry",
+    "normalize_base_url",
     "providers_path",
 ]
 
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,30}[a-z0-9]?$")
+
+# Endpoint paths that get auto-stripped from base URLs. The OpenAI shape is
+# `<base>/chat/completions`, so users who paste the full URL from a docs page
+# end up with `<base>/chat/completions/chat/completions` → 404. Strip the
+# longest matching suffix and any trailing slash.
+_ENDPOINT_SUFFIXES = (
+    "/chat/completions",
+    "/completions",
+    "/embeddings",
+    "/messages",   # Anthropic-shaped paste — still wrong for OpenAI-compat
+    "/responses",  # OpenAI Responses API path
+)
+
+
+def normalize_base_url(url: str) -> str:
+    """Strip trailing endpoint paths and slashes so the provider can append
+    its own ``/chat/completions``.
+
+    `https://api.example.com/v1/chat/completions` → `https://api.example.com/v1`
+    `https://api.example.com/v1/`                 → `https://api.example.com/v1`
+    `https://api.example.com/v1`                  → unchanged
+    """
+    cleaned = url.strip().rstrip("/")
+    # Sort by length so the longest suffix wins.
+    for suffix in sorted(_ENDPOINT_SUFFIXES, key=len, reverse=True):
+        if cleaned.endswith(suffix):
+            cleaned = cleaned[: -len(suffix)]
+            break
+    return cleaned.rstrip("/")
 
 
 def providers_path() -> Path:
@@ -69,13 +99,18 @@ class ProviderRegistry:
         except json.JSONDecodeError:
             return cls(path=target, _providers={}, _default="")
         providers = {}
+        repaired = False
         for name, body in (data.get("custom") or {}).items():
             if not isinstance(body, dict):
                 continue
+            raw_url = str(body.get("base_url", ""))
+            normalized = normalize_base_url(raw_url)
+            if normalized != raw_url:
+                repaired = True
             try:
                 providers[name] = CustomProvider(
                     name=name,
-                    base_url=str(body.get("base_url", "")),
+                    base_url=normalized,
                     model=str(body.get("model", "")),
                     api_key_env=str(body.get("api_key_env", "")),
                     api_key_inline=str(body.get("api_key_inline", "")),
@@ -86,7 +121,10 @@ class ProviderRegistry:
         default = str(data.get("default") or "")
         if default and default not in providers:
             default = ""
-        return cls(path=target, _providers=providers, _default=default)
+        registry = cls(path=target, _providers=providers, _default=default)
+        if repaired:
+            registry._save()
+        return registry
 
     def list(self) -> list[CustomProvider]:
         return [self._providers[k] for k in sorted(self._providers)]
@@ -95,6 +133,18 @@ class ProviderRegistry:
         return self._providers.get(name)
 
     def add(self, provider: CustomProvider, *, overwrite: bool = False) -> None:
+        # Auto-strip /chat/completions etc. — saves users from the
+        # paste-from-docs trap that produces double-paths and 404s.
+        normalized = normalize_base_url(provider.base_url)
+        if normalized != provider.base_url:
+            provider = CustomProvider(
+                name=provider.name,
+                base_url=normalized,
+                model=provider.model,
+                api_key_env=provider.api_key_env,
+                api_key_inline=provider.api_key_inline,
+                extra_headers=provider.extra_headers,
+            )
         provider.validate()
         if not overwrite and provider.name in self._providers:
             raise ValueError(f"provider {provider.name!r} already exists; pass overwrite=True")
