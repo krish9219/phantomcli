@@ -82,19 +82,63 @@ _CODER_SYSTEM_PROMPT = (
 )
 
 _EXECUTOR_SYSTEM_PROMPT_PREFIX = (
-    "You are the executor in a planner/coder + executor pipeline. The "
-    "user gave a task, and a coder model produced the plan + code "
-    "below. Your job: read the coder's output and use the available "
-    "tools to (1) write each file at the path specified in the "
-    "```language file=PATH``` fences, (2) run the shell commands "
-    "listed with `$` prefix. Don't redesign the code — just execute "
-    "the plan. After all files are written and commands run, report "
-    "what you did in 1–3 sentences.\n\n"
-    "Coder output to execute:\n\n"
+    "You are the executor in a planner/coder + executor pipeline. A "
+    "coder model has already produced the complete implementation as "
+    "text below in <coder_plan>...</coder_plan>. Your ONLY job: use "
+    "tools to materialise it.\n\n"
+    "**ACT, DO NOT NARRATE.** Saying \"I will create app.py\" without "
+    "calling write_file is a failure. Saying \"I'll run pip install\" "
+    "without calling run_bash is a failure. Skip the description — "
+    "go straight to tool calls.\n\n"
+    "Specifically:\n"
+    "1. For each ```language file=PATH``` block in the plan, call "
+    "write_file with that exact path and the block's contents.\n"
+    "2. For each `$ command` line in the plan, call run_bash with "
+    "that command.\n"
+    "3. Do not redesign the code. Do not paste the code in your "
+    "reply. Do not summarise file contents. Just write_file + "
+    "run_bash, in order.\n"
+    "4. Only AFTER every file is written and every command has run, "
+    "write a 1–3 sentence summary of what you did.\n\n"
+    "<coder_plan>\n"
 )
+_EXECUTOR_SYSTEM_PROMPT_SUFFIX = "\n</coder_plan>\n"
 
 # Sentinel returned by _handle_slash to mean "exit the REPL".
 _SLASH_EXIT = object()
+
+
+_THINK_BLOCK_RE = None  # populated lazily to keep import-time work small
+
+
+def _strip_thinking_tags(text: str) -> str:
+    """Remove reasoning artefacts that some open-weight models leak.
+
+    Strips both well-formed ``<think>...</think>`` blocks and orphaned
+    closing tags like the bare ``</think>`` that llama-3.3 sometimes
+    leaves at the start of a reply when the opening tag was emitted
+    in a thinking-channel that the API didn't surface.
+    """
+    if not text:
+        return text
+    global _THINK_BLOCK_RE
+    if _THINK_BLOCK_RE is None:
+        import re as _re
+        _THINK_BLOCK_RE = _re.compile(
+            r"<(think|thinking|thought|reasoning)>.*?</\1>",
+            _re.DOTALL | _re.IGNORECASE,
+        )
+    cleaned = _THINK_BLOCK_RE.sub("", text)
+
+    # Strip orphan closing tags at the start (or anywhere on a line).
+    import re as _re
+    cleaned = _re.sub(
+        r"</(think|thinking|thought|reasoning)>",
+        "", cleaned, flags=_re.IGNORECASE,
+    )
+    # Collapse double newlines created by removing the tags.
+    cleaned = _re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    return cleaned or text  # if stripping wiped everything, keep original
 
 
 def _looks_garbled(text: str) -> bool:
@@ -945,6 +989,7 @@ def run_repl(
         except Exception:
             _prof_dual = None
         effective_prompt = prompt
+        prior_system_prompt = None
         if (
             _prof_dual is not None
             and _prof_dual.dual_mode
@@ -959,21 +1004,28 @@ def run_repl(
                     write=write,
                 )
                 spinner.set_phase("executing")
-                effective_prompt = (
-                    _EXECUTOR_SYSTEM_PROMPT_PREFIX + coder_output
-                    + "\n\n---\n\nThe user's original request:\n\n" + prompt
+                # The executor prompt is a *system prompt* swap for this
+                # turn — putting it in the user message let the model
+                # treat the directive as content (it described instead
+                # of executing). Restore after respond_to() returns.
+                prior_system_prompt = session.system_prompt
+                session.system_prompt = (
+                    _EXECUTOR_SYSTEM_PROMPT_PREFIX
+                    + coder_output
+                    + _EXECUTOR_SYSTEM_PROMPT_SUFFIX
                 )
             except Exception as exc:
                 spinner.stop(mark="✗")
                 write(f"{DIM}coder stage failed:{RESET} {exc}\n")
                 write(f"  {DIM}falling through to single-model mode for this turn{RESET}\n")
-                effective_prompt = prompt
                 spinner = PhantomSpinner()
                 spinner.start()
 
         try:
             reply = session.respond_to(effective_prompt)
         except KeyboardInterrupt:
+            if prior_system_prompt is not None:
+                session.system_prompt = prior_system_prompt
             # Ctrl+C during a turn — abort cleanly, keep the REPL alive.
             spinner.stop(mark="✗")
             write(f"{DIM}(interrupted — partial state kept; press Ctrl+C again to exit){RESET}\n")
@@ -987,6 +1039,9 @@ def run_repl(
             write(f"{DIM}error:{RESET} {exc}\n")
             continue
         spinner.stop()
+        if prior_system_prompt is not None:
+            session.system_prompt = prior_system_prompt
+        reply = _strip_thinking_tags(reply)
         write(f"{GREEN}{assistant_label} ›{RESET} {reply}\n")
         if _looks_garbled(reply):
             current_model = getattr(session.provider, "_model", "")

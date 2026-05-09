@@ -298,20 +298,43 @@ class OpenAICompatibleProvider:
             headers["Authorization"] = f"Bearer {self._api_key}"
 
         url = f"{self._base_url}/chat/completions"
-        try:
-            response = self._http().post(url, headers=headers, json=payload)
-        except Exception as exc:
-            # httpx raises ReadTimeout / ConnectTimeout subclasses of TimeoutException.
-            cls = type(exc).__name__
-            if "Timeout" in cls or "timeout" in str(exc).lower():
-                raise PhantomError(
-                    f"provider {self.name!r} timed out after {self._timeout:.0f}s "
-                    f"(model={self._model!r}). The model may be stuck or NVIDIA's "
-                    f"gateway is holding the connection. Try /reset and switching "
-                    f"to a faster model with /model meta_llama-3.3-70b-instruct, "
-                    f"or raise PHANTOM_HTTP_TIMEOUT_S to allow longer waits."
-                ) from exc
-            raise PhantomError(f"provider {self.name!r} request failed: {exc}") from exc
+        # 429 retry with backoff. NVIDIA's free tier throttles aggressively
+        # in chat sessions; one short retry recovers ~half the cases.
+        attempts = 2
+        for attempt_idx in range(attempts):
+            try:
+                response = self._http().post(url, headers=headers, json=payload)
+            except Exception as exc:
+                cls = type(exc).__name__
+                if "Timeout" in cls or "timeout" in str(exc).lower():
+                    raise PhantomError(
+                        f"provider {self.name!r} timed out after {self._timeout:.0f}s "
+                        f"(model={self._model!r}). The model may be stuck or NVIDIA's "
+                        f"gateway is holding the connection. Try /reset and switching "
+                        f"to a faster model with /model meta_llama-3.3-70b-instruct, "
+                        f"or raise PHANTOM_HTTP_TIMEOUT_S to allow longer waits."
+                    ) from exc
+                raise PhantomError(f"provider {self.name!r} request failed: {exc}") from exc
+
+            # 429 retry path: one short backoff with jitter.
+            if response.status_code == 429 and attempt_idx + 1 < attempts:
+                # Honour Retry-After if the server sent one (capped at 10s).
+                retry_after = 0.0
+                try:
+                    retry_after = float(response.headers.get("Retry-After", "0"))
+                except (ValueError, TypeError):
+                    retry_after = 0.0
+                import random as _random
+                import time as _time
+                wait = max(0.5, min(retry_after, 10.0)) if retry_after else 1.5 + _random.random()
+                self._notify(
+                    f"  ⚠ provider {self.name!r} rate-limited (429); "
+                    f"retrying in {wait:.1f}s…"
+                )
+                _time.sleep(wait)
+                continue
+            break
+
         if response.status_code >= 400:
             body = response.text[:300]
             if (
@@ -320,6 +343,13 @@ class OpenAICompatibleProvider:
                 and _looks_like_tool_rejection(body)
             ):
                 raise _ToolsNotSupported(body)
+            if response.status_code == 429:
+                raise PhantomError(
+                    f"provider {self.name!r} rate-limited (429) on {self._model!r} "
+                    f"after a retry. NVIDIA's free tier throttles bursty traffic — "
+                    f"wait ~30 seconds, or switch to a less-loaded model with "
+                    f"/model meta/llama-3.3-70b-instruct."
+                )
             raise PhantomError(
                 f"provider {self.name!r} returned {response.status_code}: {body}"
             )

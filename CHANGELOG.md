@@ -13,6 +13,50 @@ The major version cadence:
 
 ---
 
+## [1.1.16] — 2026-05-09 — Act-don't-narrate prompts + 429 retry + think-tag stripping
+
+Patch release. Triggered by the v1.1.15 user session: even with dual
+mode wired correctly, the executor said "I'll create app.py..."
+without ever calling write_file. Plus llama-3.3 leaked `</think>`
+tags. Plus NVIDIA started returning 429s.
+
+### Fixed
+
+* **DEFAULT_SYSTEM_PROMPT now demands action.** New "Act, don't
+  narrate" section spells out: "Saying 'I will create app.py' without
+  calling write_file is a failure. Call write_file first, then report
+  what you did." Single-model mode now stops describing instead of
+  doing.
+* **Executor system prompt rewritten as directive.** Was previously
+  injected into the user message (model treated it as content);
+  now mutated into `session.system_prompt` for the dual-mode turn
+  and restored after. Wraps coder output in `<coder_plan>` tags so
+  the model has a clear delimiter, and explicitly forbids paraphrasing
+  the plan in chat output.
+* **`</think>` artefact stripping** — `_strip_thinking_tags` removes
+  `<think>...</think>`, `<thinking>...</thinking>`, `<thought>...</thought>`,
+  `<reasoning>...</reasoning>`, plus orphan closing tags llama-3.3
+  sometimes leaves at the start of replies. Applied to every assistant
+  turn before the user sees it. Empty-after-strip → keep original
+  (so an all-thinking reply still shows something).
+* **429 retry with backoff.** When the provider returns 429, Phantom
+  now retries once with a short jittered backoff (or honours the
+  `Retry-After` header, capped at 10s). The user sees an inline
+  `⚠ rate-limited; retrying…` notice. If the second call also 429s,
+  the error message names the model and suggests switching.
+
+### Tests
+
+* 13 new in `phantom/tests/test_v1_1_16_fixes.py`: prompt assertions
+  (act-don't-narrate, executor directive, coder_plan tags), think-tag
+  stripping (well-formed, orphan closing, multiple aliases, normal
+  text passthrough, never-empty-result, empty input), 429 retry path
+  (succeeds after one retry, raises actionable error after two
+  failures, honours Retry-After, non-429 doesn't retry).
+* Suite: 2373 passed, 0 failed.
+
+---
+
 ## [1.1.15] — 2026-05-09 — Dual-model mode (planner + executor)
 
 Patch release. The user proposed: use a strong-but-quirky coder model
