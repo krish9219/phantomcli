@@ -120,6 +120,7 @@ def test_run_bash_tool_schema_advertises_new_defaults(tmp_path: Path):
     assert timeout_schema["default"] == 60
     desc = bash.description.lower()
     assert "60 seconds" in desc or "60-second" in desc or "default 60" in desc
-    # Description must warn about backgrounding servers.
-    assert "background" in desc
-    assert "nohup" in desc or "start /b" in desc
+    # v1.1.20: rather than backgrounding via `nohup`/`start /b`, tell the
+    # model to use the dedicated start_server tool.
+    assert "start_server" in desc
+    assert "do not use this for long-running servers" in desc

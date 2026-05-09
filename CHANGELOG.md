@@ -13,6 +13,53 @@ The major version cadence:
 
 ---
 
+## [1.1.20] — 2026-05-09 — `start_server` tool — true detached spawn + URL probe
+
+Patch release. Triggered by the v1.1.19 user report: the model called
+`run_bash python app.py` which blocked Flask in the foreground until
+the 60s timeout killed it. No URL was ever returned and the server
+process was always dead by the time the agent loop continued.
+
+### Added
+
+* **`start_server` tool** — first-class agent tool for launching
+  long-running web servers. Spawns the process *truly detached*
+  (Windows: `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`; POSIX:
+  `start_new_session=True`) so the child outlives the agent loop.
+  Redirects stdout/stderr to `$workspace/.phantom_server.log`. Polls
+  `127.0.0.1:port` for up to `wait_s` seconds (default 3) to confirm
+  the server is listening, then returns:
+  `{pid, command, port, url, log, listening, alive, hint}`.
+  - When listening: hint = "tell the user to open <URL>".
+  - When alive but not listening: hint points the user at the log.
+  - When dead at probe time: hint = "exited immediately, check log".
+* **Auto-port-guess** in `_guess_port` for common frameworks (Flask
+  5000, uvicorn/Django 8000, Next/Rails 3000, plus `--port N` /
+  `-p N` / `host:port` parsing).
+
+### Changed
+
+* **`run_bash` description rewritten**: now explicitly tells the
+  model "DO NOT use this for long-running servers (`python app.py`,
+  `flask run`, `uvicorn`, `npm start`, etc.). Use the start_server
+  tool instead." Replaces the old "background it with `start /b`"
+  guidance which the model ignored half the time.
+
+### Tests
+
+* 19 new in `phantom/tests/test_start_server.py` covering port
+  guessing (parametrised: 11 cases including `--port`, `-p`,
+  `host:port`, framework defaults), real-server spawn end-to-end
+  (URL returned, log file created, listening probe returns true),
+  immediate-crash path (alive=False, hint references log, log
+  contains the import error), empty-command JSON-error parity,
+  default port fallback, and tool registration in `default_tools`.
+* 1 updated in `test_run_bash_timeout.py`: run_bash description
+  now asserts on `start_server` mention instead of `nohup`/`start /b`.
+* Suite: 2436 passed, 0 failed.
+
+---
+
 ## [1.1.19] — 2026-05-09 — Host-OS shell guidance in system prompt
 
 Patch release. Triggered by the v1.1.18 user report: "all bash

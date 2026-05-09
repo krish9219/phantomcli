@@ -42,6 +42,138 @@ def _looks_like_server_start(cmd: str) -> bool:
     return any(p.search(cmd) for p in _SERVER_START_PATTERNS)
 
 
+def _start_server(args: dict[str, Any], *, workdir: str) -> str:
+    """Launch a long-running server detached. Returns immediately with the
+    PID, log path, and a probe of whether the port is listening yet.
+
+    The server's stdout/stderr go to ``$workdir/.phantom_server.log`` so
+    the user can tail it. The child is spawned with platform-appropriate
+    detach flags so it survives Phantom's exit and isn't bound to the
+    sandbox lifetime — this is intentional, since the v1 sandbox runs
+    in passthrough mode on Windows and doesn't actually contain
+    long-running processes.
+    """
+    import os as _os
+    import platform as _platform
+    import socket as _socket
+    import subprocess as _subprocess  # noqa: S404 — start_server is the sandbox exception
+    import time as _time
+
+    cmd = args.get("command", "")
+    if not isinstance(cmd, str) or not cmd.strip():
+        return json.dumps({
+            "error": "start_server: 'command' must be a non-empty string",
+            "hint": (
+                'Retry with the server command, e.g. '
+                '{"command": "python app.py", "port": 5000}.'
+            ),
+        })
+    port = int(args.get("port", 0)) or _guess_port(cmd) or 5000
+    wait_s = float(args.get("wait_s", 3.0))
+    wait_s = max(0.0, min(wait_s, 30.0))
+
+    _os.makedirs(workdir, exist_ok=True)
+    log_path = _os.path.join(workdir, ".phantom_server.log")
+    try:
+        log = open(log_path, "wb")
+    except OSError as e:
+        return json.dumps({"error": f"could not open log file: {e}"})
+
+    is_windows = _platform.system() == "Windows"
+    popen_kwargs: dict[str, Any] = {
+        "cwd": workdir,
+        "stdout": log,
+        "stderr": _subprocess.STDOUT,
+        "stdin": _subprocess.DEVNULL,
+    }
+    if is_windows:
+        DETACHED_PROCESS = 0x00000008
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        popen_kwargs["creationflags"] = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+        popen_kwargs["shell"] = True  # let cmd.exe parse the command
+    else:
+        popen_kwargs["start_new_session"] = True
+        popen_kwargs["shell"] = True  # /bin/sh
+
+    try:
+        proc = _subprocess.Popen(cmd, **popen_kwargs)  # noqa: S603
+    except OSError as e:
+        log.close()
+        return json.dumps({"error": f"start_server failed to launch: {e}"})
+
+    # Brief poll for the port. We don't open the user's port; we just
+    # connect-and-close to see if anything is listening.
+    listening = False
+    deadline = _time.time() + wait_s
+    while _time.time() < deadline:
+        if proc.poll() is not None:
+            break  # process exited (probably crashed) — bail early
+        try:
+            with _socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                listening = True
+                break
+        except (OSError, _socket.timeout):
+            _time.sleep(0.25)
+
+    summary: dict[str, Any] = {
+        "pid": proc.pid,
+        "command": cmd,
+        "port": port,
+        "url": f"http://127.0.0.1:{port}",
+        "log": log_path,
+        "listening": listening,
+        "alive": proc.poll() is None,
+    }
+    if not summary["alive"]:
+        summary["exit_code"] = proc.returncode
+        summary["hint"] = (
+            f"Server exited immediately. Check the log: read_file path="
+            f"{log_path!r} to see the error. Common causes: missing "
+            f"dependencies (run pip install first), port {port} already "
+            f"in use, syntax error in app code."
+        )
+    elif not listening:
+        summary["hint"] = (
+            f"Process is running (pid {proc.pid}) but nothing is "
+            f"listening on port {port} yet. The server may still be "
+            f"starting up — try opening {summary['url']} in a moment, "
+            f"or read_file {log_path!r} for status."
+        )
+    else:
+        summary["hint"] = (
+            f"Server is up. Tell the user to open {summary['url']}. "
+            f"The process keeps running after this turn ends; to stop "
+            f"it call run_bash with `taskkill /PID {proc.pid} /F` "
+            f"(Windows) or `kill {proc.pid}` (POSIX)."
+        )
+    return json.dumps(summary)
+
+
+def _guess_port(cmd: str) -> int:
+    """Sniff a likely listening port out of a server-start command.
+
+    Looks for `--port N`, `-p N`, `:N` (uvicorn-style host:port), and
+    common defaults baked into known frameworks. Returns 0 when nothing
+    matches; the caller falls back to 5000 (Flask's default).
+    """
+    m = re.search(r"--port[= ]+(\d{2,5})", cmd)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"\s-p[= ]+(\d{2,5})", cmd)
+    if m:
+        return int(m.group(1))
+    m = re.search(r":(\d{4,5})\b", cmd)
+    if m:
+        return int(m.group(1))
+    if "uvicorn" in cmd:
+        return 8000
+    if "next" in cmd:
+        return 3000
+    if "rails" in cmd:
+        return 3000
+    return 0
+
+
 def _run_bash(args: dict[str, Any], *, workdir: str) -> str:
     cmd = args.get("command", "")
     if not isinstance(cmd, str) or not cmd.strip():
@@ -245,11 +377,10 @@ def default_tools(
                 "no network by default; the working directory is writable but "
                 "the host filesystem is read-only with secret paths blocked. "
                 "Default timeout is 60 seconds (max 600). "
-                "DO NOT run long-running servers in the foreground — they "
-                "will block until the timeout fires. Background them: on "
-                "Windows use `start /b python app.py`, on POSIX use "
-                "`nohup python app.py >server.log 2>&1 &`. After starting "
-                "a server, stop calling tools and tell the user the URL."
+                "**DO NOT use this for long-running servers** (`python app.py`, "
+                "`flask run`, `uvicorn`, `npm start`, etc.) — they block until "
+                "timeout fires. Use the **start_server** tool instead, which "
+                "spawns the server detached and returns a URL immediately."
             ),
             input_schema={
                 "type": "object",
@@ -265,6 +396,48 @@ def default_tools(
                 "required": ["command"],
             },
             handler=lambda args: _run_bash(args, workdir=workdir),
+        ),
+        ToolDefinition(
+            name="start_server",
+            description=(
+                "Launch a long-running server (Flask, Django, FastAPI, "
+                "Express, Next.js, etc.) detached from the agent loop. "
+                "Returns immediately with the PID, URL, log path, and a "
+                "probe of whether the port is listening. Use this — "
+                "NOT run_bash — for any command that runs a web server or "
+                "other long-lived process. Examples of `command`: "
+                "`python app.py`, `flask run`, `uvicorn main:app --port 8000`, "
+                "`npm start`, `node server.js`. The server keeps running "
+                "after this tool call returns; the user can open the URL."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "Server-launch command (e.g. 'python app.py').",
+                    },
+                    "port": {
+                        "type": "integer",
+                        "description": (
+                            "Port the server will bind. Used to probe and to "
+                            "build the URL. If omitted, Phantom guesses from "
+                            "the command (Flask=5000, Django/uvicorn=8000, "
+                            "Next/rails=3000)."
+                        ),
+                    },
+                    "wait_s": {
+                        "type": "number",
+                        "description": (
+                            "Seconds to wait for the port to come up before "
+                            "returning. Default 3, max 30."
+                        ),
+                        "default": 3,
+                    },
+                },
+                "required": ["command"],
+            },
+            handler=lambda args: _start_server(args, workdir=workdir),
         ),
         ToolDefinition(
             name="write_file",
