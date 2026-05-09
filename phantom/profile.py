@@ -41,16 +41,26 @@ class Profile:
     workspace_path: str = ""      # default project root for `write_file` etc.
     first_seen: str = ""          # ISO-8601 of first onboarding
     god_mode: bool = False        # system-prompt unlock; toggled by /god-mode
+    # Dual-model (planner + executor) mode. When BOTH are set and dual_mode
+    # is True, each user turn runs through the coder first (no tools, code
+    # generation) and the executor second (tools, file creation + commands).
+    coder_provider: str = ""      # registered provider name for the coder
+    executor_provider: str = ""   # registered provider name for the executor
+    dual_mode: bool = False       # toggled by /dual on|off
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Profile":
         out = cls()
-        for f in ("user_name", "assistant_name", "workspace_path", "first_seen"):
+        for f in (
+            "user_name", "assistant_name", "workspace_path", "first_seen",
+            "coder_provider", "executor_provider",
+        ):
             v = data.get(f)
             if isinstance(v, str):
                 setattr(out, f, v)
-        if isinstance(data.get("god_mode"), bool):
-            out.god_mode = data["god_mode"]
+        for f in ("god_mode", "dual_mode"):
+            if isinstance(data.get(f), bool):
+                setattr(out, f, data[f])
         return out
 
     def is_complete(self) -> bool:

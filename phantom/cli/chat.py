@@ -60,7 +60,38 @@ SLASH_COMMANDS = {
     "/memory",
     "/uninstall",
     "/system",
+    "/coder", "/executor", "/dual",
 }
+
+
+_CODER_SYSTEM_PROMPT = (
+    "You are an expert programmer in a planner/coder role. Another AI "
+    "(the executor) will take your output and create the files + run "
+    "the commands. So your job is to produce a complete, ready-to-run "
+    "implementation as text — no tool calls.\n\n"
+    "Format every file like this so the executor can extract it:\n\n"
+    "```python file=app.py\n"
+    "<full file contents>\n"
+    "```\n\n"
+    "After the file blocks, list the shell commands the executor "
+    "should run, one per line, prefixed with `$`. Example:\n\n"
+    "$ pip install flask\n"
+    "$ python app.py\n\n"
+    "Be complete: include ALL files needed, with their full contents. "
+    "Don't say 'omitted for brevity' — write everything out."
+)
+
+_EXECUTOR_SYSTEM_PROMPT_PREFIX = (
+    "You are the executor in a planner/coder + executor pipeline. The "
+    "user gave a task, and a coder model produced the plan + code "
+    "below. Your job: read the coder's output and use the available "
+    "tools to (1) write each file at the path specified in the "
+    "```language file=PATH``` fences, (2) run the shell commands "
+    "listed with `$` prefix. Don't redesign the code — just execute "
+    "the plan. After all files are written and commands run, report "
+    "what you did in 1–3 sentences.\n\n"
+    "Coder output to execute:\n\n"
+)
 
 # Sentinel returned by _handle_slash to mean "exit the REPL".
 _SLASH_EXIT = object()
@@ -208,6 +239,10 @@ def _handle_slash(
         write(f"  {CYAN}/models{RESET} {DIM}— list registered providers (alias /providers){RESET}\n")
         write(f"  {CYAN}/add{RESET} {DIM}— add a new provider via the wizard{RESET}\n")
         write(f"  {CYAN}/smart [on|off]{RESET} {DIM}— toggle prompt-expansion mode{RESET}\n")
+        write(f"  {DIM}── dual-model (planner + executor) ──{RESET}\n")
+        write(f"  {CYAN}/coder <provider|model>{RESET} {DIM}— set the coder model{RESET}\n")
+        write(f"  {CYAN}/executor <provider|model>{RESET} {DIM}— set the executor (tool-runner) model{RESET}\n")
+        write(f"  {CYAN}/dual [on|off]{RESET} {DIM}— toggle two-stage flow{RESET}\n")
         write(f"  {DIM}── you ──{RESET}\n")
         write(f"  {CYAN}/name [new]{RESET} {DIM}— show or rename the assistant{RESET}\n")
         write(f"  {CYAN}/workspace [path]{RESET} {DIM}— show or change project root{RESET}\n")
@@ -391,7 +426,125 @@ def _handle_slash(
     if head == "/uninstall":
         return _uninstall_flow(arg, write)
 
+    if head == "/coder":
+        from phantom.profile import load_profile, save_profile
+        profile = load_profile()
+        if not arg:
+            current = profile.coder_provider or "(not set)"
+            write(f"  coder model:    {CYAN}{current}{RESET}\n")
+            write(f"  {DIM}usage: /coder <provider-name|model-id>{RESET}\n")
+            return True
+        ok, name = _resolve_provider_or_model_arg(arg, write)
+        if not ok:
+            return True
+        profile.coder_provider = name
+        save_profile(profile)
+        write(f"{GREEN}✓{RESET} coder model: {CYAN}{name}{RESET}\n")
+        if not profile.dual_mode:
+            write(f"  {DIM}enable with: /dual on{RESET}\n")
+        return True
+
+    if head == "/executor":
+        from phantom.profile import load_profile, save_profile
+        profile = load_profile()
+        if not arg:
+            current = profile.executor_provider or "(not set)"
+            write(f"  executor model: {CYAN}{current}{RESET}\n")
+            write(f"  {DIM}usage: /executor <provider-name|model-id>{RESET}\n")
+            return True
+        ok, name = _resolve_provider_or_model_arg(arg, write)
+        if not ok:
+            return True
+        profile.executor_provider = name
+        save_profile(profile)
+        write(f"{GREEN}✓{RESET} executor model: {CYAN}{name}{RESET}\n")
+        if not profile.dual_mode:
+            write(f"  {DIM}enable with: /dual on{RESET}\n")
+        return True
+
+    if head == "/dual":
+        from phantom.profile import load_profile, save_profile
+        profile = load_profile()
+        flag = arg.strip().lower()
+        if flag in ("on", "1", "true", "yes"):
+            if not profile.coder_provider or not profile.executor_provider:
+                write(f"{YELLOW}set /coder and /executor first{RESET}\n")
+                write(f"  {DIM}coder    : {profile.coder_provider or '(not set)'}{RESET}\n")
+                write(f"  {DIM}executor : {profile.executor_provider or '(not set)'}{RESET}\n")
+                return True
+            profile.dual_mode = True
+            save_profile(profile)
+            write(f"{GREEN}✓{RESET} dual mode {DIM}on{RESET}\n")
+            write(f"  {DIM}coder    →{RESET} {CYAN}{profile.coder_provider}{RESET}\n")
+            write(f"  {DIM}executor →{RESET} {CYAN}{profile.executor_provider}{RESET}\n")
+        elif flag in ("off", "0", "false", "no"):
+            profile.dual_mode = False
+            save_profile(profile)
+            write(f"{GREEN}✓{RESET} dual mode {DIM}off{RESET}\n")
+        else:
+            cur = "on" if profile.dual_mode else "off"
+            write(f"  dual mode:  {CYAN}{cur}{RESET}\n")
+            write(f"  coder:      {CYAN}{profile.coder_provider or '(not set)'}{RESET}\n")
+            write(f"  executor:   {CYAN}{profile.executor_provider or '(not set)'}{RESET}\n")
+            write(f"  {DIM}toggle: /dual on  |  /dual off{RESET}\n")
+        return True
+
     return False
+
+
+def _resolve_provider_or_model_arg(arg: str, write: Callable[[str], None]) -> tuple[bool, str]:
+    """For /coder + /executor: arg can be a registered provider name OR a
+    raw model id. If a model id, register it as a new provider on the
+    current default's endpoint+key first. Returns (ok, provider_name)."""
+    YELLOW = "\033[33m"; DIM = "\033[2m"; RESET = "\033[0m"
+    registry = ProviderRegistry.load()
+    if registry.get(arg) is not None:
+        return True, arg
+
+    # Treat as a model id — clone the current default's endpoint+key.
+    default = registry.get_default()
+    if default is None:
+        write(f"{YELLOW}no providers configured. Run /add first.{RESET}\n")
+        return False, ""
+
+    api_key = ""
+    if default.api_key_env:
+        api_key = os.environ.get(default.api_key_env, "")
+    if not api_key:
+        api_key = default.api_key_inline
+    if not api_key:
+        write(f"{YELLOW}default provider has no API key — can't reuse it. Run /add for {arg}.{RESET}\n")
+        return False, ""
+
+    # Build a synthetic name from the model id.
+    import re as _re
+    last = arg.rsplit("/", 1)[-1] or arg
+    last = _re.sub(r"[^a-z0-9_-]", "-", last.lower()).strip("-") or "custom"
+    if not _re.match(r"^[a-z]", last):
+        last = "m-" + last
+    last = last[:30] or "custom"
+
+    candidate = last
+    n = 2
+    while registry.get(candidate) is not None:
+        candidate = f"{last}-{n}"
+        n += 1
+        if n > 99:
+            break
+    try:
+        registry.add(
+            CustomProvider(
+                name=candidate,
+                base_url=default.base_url,
+                model=arg,
+                api_key_inline=api_key,
+            ),
+        )
+    except ValueError as exc:
+        write(f"{YELLOW}failed to register {arg!r}: {exc}{RESET}\n")
+        return False, ""
+    write(f"  {DIM}registered new provider: {candidate} → {arg}{RESET}\n")
+    return True, candidate
 
 
 def _install_license(key: str, write: Callable[[str], None]) -> bool:
@@ -526,6 +679,57 @@ def _current_provider_name(session: AgentSession) -> str:
         if entry.base_url.rstrip("/") == base_url and entry.model == model:
             return entry.name
     return ""
+
+
+def _run_coder_stage(
+    *,
+    user_prompt: str,
+    coder_provider_name: str,
+    write: Callable[[str], None],
+) -> str:
+    """Build a one-shot coder provider, send the user prompt with the
+    coder system prompt, return the raw text reply.
+
+    No tools, no agent loop — just one LLM call. The response is the
+    plan + code blocks the executor will then materialise.
+    """
+    DIM = "\033[2m"; CYAN = "\033[36m"; RESET = "\033[0m"
+    registry = ProviderRegistry.load()
+    coder = registry.get(coder_provider_name)
+    if coder is None:
+        raise PhantomError(f"coder provider {coder_provider_name!r} not found")
+
+    api_key = ""
+    if coder.api_key_env:
+        api_key = os.environ.get(coder.api_key_env, "")
+    if not api_key:
+        api_key = coder.api_key_inline
+
+    coder_provider = OpenAICompatibleProvider(
+        base_url=coder.base_url,
+        api_key=api_key,
+        model=coder.model,
+        # Coder doesn't need tools — and many strong-coder models have
+        # broken tool-call formats anyway. Disabling sidesteps the issue.
+        tools_supported=False,
+    )
+
+    from phantom.agent.provider import ProviderMessage
+    messages = [
+        ProviderMessage(role="system", content=_CODER_SYSTEM_PROMPT),
+        ProviderMessage(role="user", content=user_prompt),
+    ]
+    write(f"\r\033[K  {DIM}[coder: {coder.model}] thinking…{RESET}\n")
+    response = coder_provider.complete(messages, tools=[])
+    text = response.text or ""
+    if not text.strip():
+        raise PhantomError("coder returned empty response")
+    # Show a short preview so the user knows the coder did something.
+    preview = text[:200].replace("\n", " ")
+    if len(text) > 200:
+        preview += "…"
+    write(f"  {DIM}[coder draft: {len(text)} chars]{RESET} {preview}\n")
+    return text
 
 
 def _switch_model_only(
@@ -733,8 +937,42 @@ def run_repl(
 
         spinner = PhantomSpinner()
         spinner.start()
+
+        # Dual-model: pre-stage the user's prompt with a coder pass.
         try:
-            reply = session.respond_to(prompt)
+            from phantom.profile import load_profile as _lp
+            _prof_dual = _lp()
+        except Exception:
+            _prof_dual = None
+        effective_prompt = prompt
+        if (
+            _prof_dual is not None
+            and _prof_dual.dual_mode
+            and _prof_dual.coder_provider
+            and _prof_dual.executor_provider
+        ):
+            try:
+                spinner.set_phase("routing")
+                coder_output = _run_coder_stage(
+                    user_prompt=prompt,
+                    coder_provider_name=_prof_dual.coder_provider,
+                    write=write,
+                )
+                spinner.set_phase("executing")
+                effective_prompt = (
+                    _EXECUTOR_SYSTEM_PROMPT_PREFIX + coder_output
+                    + "\n\n---\n\nThe user's original request:\n\n" + prompt
+                )
+            except Exception as exc:
+                spinner.stop(mark="✗")
+                write(f"{DIM}coder stage failed:{RESET} {exc}\n")
+                write(f"  {DIM}falling through to single-model mode for this turn{RESET}\n")
+                effective_prompt = prompt
+                spinner = PhantomSpinner()
+                spinner.start()
+
+        try:
+            reply = session.respond_to(effective_prompt)
         except KeyboardInterrupt:
             # Ctrl+C during a turn — abort cleanly, keep the REPL alive.
             spinner.stop(mark="✗")

@@ -13,6 +13,55 @@ The major version cadence:
 
 ---
 
+## [1.1.15] — 2026-05-09 — Dual-model mode (planner + executor)
+
+Patch release. The user proposed: use a strong-but-quirky coder model
+(qwen3-coder, kimi, deepseek) to *write* the code, and a reliable
+tool-calling model (llama-3.3, llama-4-maverick) to *execute* it —
+write the files, run the commands. Same pattern as Aider's architect
+mode and several agent frameworks. Implemented.
+
+### Added
+
+* **Profile fields** `coder_provider`, `executor_provider`,
+  `dual_mode`. Backwards-compatible loader: profiles saved by older
+  versions get the new fields defaulted to empty / False.
+* **`/coder <provider|model-id>`** sets the planner/coder model.
+  Accepts a registered provider name OR a raw model id (in which
+  case it clones the default provider's endpoint+key and registers
+  the model id as a new entry, same trick as `/model`).
+* **`/executor <provider|model-id>`** sets the executor model.
+* **`/dual on|off`** toggles the two-stage flow. Refuses `/dual on`
+  when either coder or executor isn't set, with a clear hint.
+  `/dual` without args reports the current state.
+* **Two-stage agent loop** in `chat`: when dual mode is active, each
+  user turn:
+  1. Calls the coder model with NO tools and a system prompt
+     instructing it to produce complete code with `\`\`\`lang file=PATH`
+     fences and `$ ` shell-command lines.
+  2. Calls the executor session (the normal one with tools) but
+     prepends an "execute the plan below" preamble + the coder's
+     output to the user's original prompt.
+* **Coder failure falls through gracefully** — if the coder call
+  errors (timeout, garbled, rate-limited), Phantom prints a notice
+  and runs the executor on the original prompt as a single-model
+  turn. No dead session.
+* **`/help`** lists the three new commands under a "dual-model" group.
+
+### Tests
+
+* 17 new in `phantom/tests/test_dual_model.py` covering profile
+  field serialisation + back-compat, `/coder` / `/executor` with
+  registered names + raw model ids, `/dual` validation (refuses
+  without both halves) + on/off + status, the resolver helper
+  (registered → return, model-id → clone default, no default →
+  fail cleanly), and `_run_coder_stage` (tools-stripped payload,
+  coder system prompt sent, raw text returned, unknown-provider
+  raises).
+* Suite: 2360 passed, 0 failed.
+
+---
+
 ## [1.1.14] — 2026-05-09 — `/model <model-id>` one-shot switch + garbled-output detector
 
 Patch release. Triggered by the v1.1.13 user report: kimi-k2.6 returned
