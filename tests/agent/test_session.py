@@ -177,7 +177,9 @@ class TestToolCallDispatch:
             max_tool_rounds=3,
         )
         out = session.respond_to("loop")
-        assert "tool-round limit reached" in out
+        # v1.1.12 changed the marker to include the round count and a hint;
+        # the stable substring is "tool-round limit".
+        assert "tool-round limit" in out
 
 
 class TestDuplicateToolNamesRejected:

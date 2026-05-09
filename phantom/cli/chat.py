@@ -66,6 +66,39 @@ SLASH_COMMANDS = {
 _SLASH_EXIT = object()
 
 
+def _format_tool_call(name: str, args: dict[str, Any]) -> str:
+    """One-line dim summary of a tool call for the live progress feed.
+
+    Picks the most informative arg per tool: command for run_bash,
+    path for file tools, query for memory_search. Truncates long
+    values so the line stays readable.
+    """
+    DIM = "\033[2m"; RESET = "\033[0m"
+    def _trunc(s: str, n: int = 80) -> str:
+        s = " ".join(s.split())  # collapse newlines
+        return s if len(s) <= n else s[: n - 1] + "…"
+
+    if name == "run_bash":
+        cmd = args.get("command") or args.get("cmd") or ""
+        return f"{DIM}{_trunc(str(cmd))}{RESET}"
+    if name in ("write_file", "read_file", "list_dir", "edit_file"):
+        path = args.get("path", "")
+        suffix = ""
+        if name == "edit_file":
+            old = args.get("old_string", "")
+            if isinstance(old, str) and old:
+                suffix = f"  {DIM}(replacing {len(old)}b){RESET}"
+        return f"{DIM}{_trunc(str(path), 60)}{suffix}{RESET}"
+    if name == "memory_search":
+        return f"{DIM}query: {_trunc(str(args.get('query', '')), 60)}{RESET}"
+    if name == "memory_add":
+        return f"{DIM}{_trunc(str(args.get('text', '')), 60)}{RESET}"
+    if name == "web_fetch":
+        return f"{DIM}{_trunc(str(args.get('url', '')), 80)}{RESET}"
+    keys = list(args.keys())[:3]
+    return f"{DIM}({', '.join(keys)}){RESET}"
+
+
 def _personalize_system_prompt(prompt: str, profile: Any) -> str:
     """Substitute the chosen assistant_name into the default prompt and
     append a short header introducing the user + workspace.
@@ -602,6 +635,11 @@ def run_repl(
         spinner.start()
         try:
             reply = session.respond_to(prompt)
+        except KeyboardInterrupt:
+            # Ctrl+C during a turn — abort cleanly, keep the REPL alive.
+            spinner.stop(mark="✗")
+            write(f"{DIM}(interrupted — partial state kept; press Ctrl+C again to exit){RESET}\n")
+            continue
         except PhantomError as exc:
             spinner.stop(mark="✗")
             write(f"{DIM}error:{RESET} {exc.detail or exc}\n")
@@ -762,6 +800,17 @@ def chat(
     )
     if profile.god_mode:
         _set_god_mode(session, True)
+
+    # Show each tool call live so a long turn doesn't look stuck. The
+    # spinner pauses, the call is printed, then the spinner resumes —
+    # all driven from the tool callback the session calls between
+    # rounds.
+    def _tool_call_printer(_round_idx, tc):
+        summary = _format_tool_call(tc.name, tc.arguments)
+        sys.stdout.write(f"\r\033[K  \033[2m→\033[0m \033[36m{tc.name}\033[0m {summary}\n")
+        sys.stdout.flush()
+
+    session.on_tool_call = _tool_call_printer
 
     # Tell run_repl not to print its own greeting; the boot banner did.
     session._phantom_already_greeted = True

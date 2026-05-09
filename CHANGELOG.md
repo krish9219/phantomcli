@@ -13,6 +13,47 @@ The major version cadence:
 
 ---
 
+## [1.1.12] — 2026-05-09 — Bounded tool-loop + live tool visibility + Ctrl+C abort
+
+Patch release. Triggered by the v1.1.11 user report: kimi-k2.6 went
+into a 14-minute silent tool loop with no visibility and no escape.
+
+### Fixed
+
+* **Wall-clock budget** — `AgentSession` gains
+  `wall_clock_budget_s` (default 300s = 5 min). The loop checks
+  before every round and after every tool result; on bust it returns
+  the last text plus a one-line marker.
+* **`max_tool_rounds` lowered 25 → 12** — longer turns were almost
+  always the model stuck in a loop. 12 still fits typical multi-step
+  coding tasks; the budget catches the rest.
+* **Live tool-call visibility** — `AgentSession` gains
+  `on_tool_call(round_idx, tool_call)` and
+  `on_tool_result(round_idx, tool_call, result_str)` callbacks. The
+  chat REPL wires a printer that shows
+  `→ run_bash mkdir -p /home/a/Projects/flask-app && cd …` as each
+  tool runs, so a long turn no longer looks frozen. Callback errors
+  are caught — a broken printer never kills the turn.
+* **Ctrl+C aborts the current turn cleanly** — `KeyboardInterrupt`
+  during `respond_to()` is caught in the chat REPL, the spinner
+  stops with ✗, the partial state is kept (so /reset works), and
+  the prompt returns. A second Ctrl+C at the prompt exits the REPL.
+
+### Tests
+
+* 7 new in `phantom/tests/test_session_budget.py` covering default
+  rounds = 12, max-rounds returning the marker with the model's last
+  text, wall-clock budget tripping mid-loop, generous budget running
+  to completion, on_tool_call firing per call with the correct
+  round_idx and arguments, on_tool_result firing per result, and
+  callback exceptions not killing the turn.
+* 2 updated: the older `tests/agent/test_session.py` round-limit
+  marker assertion is now substring-based (the marker text expanded);
+  `phantom/tests/test_fs_tools.py` reflects the 12-round default.
+* Suite: 2325 passed, 0 failed.
+
+---
+
 ## [1.1.11] — 2026-05-09 — Identity substitution + kimi tool-call parser
 
 Patch release. Three fixes from the v1.1.10 Ghost / Arvi Sir test.
