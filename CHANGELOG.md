@@ -13,6 +13,42 @@ The major version cadence:
 
 ---
 
+## [1.1.14] — 2026-05-09 — `/model <model-id>` one-shot switch + garbled-output detector
+
+Patch release. Triggered by the v1.1.13 user report: kimi-k2.6 returned
+token soup (pipes, multilingual fragments, broken JSON) and the only
+way to switch off it was the multi-step `/add` wizard.
+
+### Added
+
+* **`/model <model-id>` reuses the current endpoint + key.** When the
+  arg isn't a registered provider name, Phantom now treats it as a
+  raw model id and swaps just the model on the active provider. So
+  `/model meta/llama-3.3-70b-instruct` works directly — same NVIDIA
+  endpoint, same key, just a different model. The new entry is
+  registered automatically (auto-named from the model id, with -2,
+  -3 suffixes on collision) so it shows up in `/models` next time.
+* **`_looks_garbled` heuristic** — when a reply has high pipe density
+  (>4%), high backslash density (>6%), or >25% non-ASCII chars,
+  Phantom prints a one-liner after the response:
+  `⚠ that reply looks garbled (model X). Try /reset then /model
+  meta/llama-3.3-70b-instruct.` The thresholds are conservative —
+  legitimate code with backslashes and unicode passes.
+
+### Tests
+
+* 12 new in `phantom/tests/test_quick_model_switch.py` covering
+  `_switch_model_only` (keeps endpoint+key, registers new entry,
+  drops orphan tool history, suffix-on-collision) and
+  `_looks_garbled` (kimi pipe soup, normal English, normal code with
+  backslashes, short replies, high CJK density). Plus end-to-end
+  through `_handle_slash` (unknown arg falls back to model-id,
+  unknown arg with no active provider shows error, registered name
+  still works).
+* Suite: 2343 passed, 0 failed.
+
+---
+
 ## [1.1.13] — 2026-05-09 — HTTP timeout 120s → 60s + actionable timeout error
 
 Patch release. Triggered by the v1.1.12 user report: a single LLM call

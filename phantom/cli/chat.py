@@ -66,6 +66,30 @@ SLASH_COMMANDS = {
 _SLASH_EXIT = object()
 
 
+def _looks_garbled(text: str) -> bool:
+    """Heuristic: does this look like a broken model output?
+
+    Triggers on the kimi-k2.6 failure mode where the response was a soup of
+    pipe characters, multilingual fragments, and tokenizer markers. We're
+    intentionally conservative — false positives are worse than missing a
+    genuinely weird-but-valid reply.
+    """
+    if len(text) < 100:
+        return False
+    sample = text[:1500]
+    total = len(sample)
+    # A normal English coding answer has very few of these.
+    pipe_density = sample.count("|") / total
+    backslash_density = sample.count("\\") / total
+    # Count CJK / non-Latin runs as a proxy for tokenizer drift.
+    non_ascii = sum(1 for c in sample if ord(c) > 127) / total
+    return (
+        pipe_density > 0.04           # "ed | | answers ing | …" — way over
+        or backslash_density > 0.06
+        or non_ascii > 0.25
+    )
+
+
 def _format_tool_call(name: str, args: dict[str, Any]) -> str:
     """One-line dim summary of a tool call for the live progress feed.
 
@@ -215,19 +239,39 @@ def _handle_slash(
     if head == "/model":
         if not arg:
             write(f"  current model: {CYAN}{getattr(session.provider, '_model', '?')}{RESET}\n")
-            write(f"  switch with:  {DIM}/model <provider-name>{RESET}\n")
+            write(f"  switch with:  {DIM}/model <provider-name>{RESET}  or  {DIM}/model <model-id>{RESET}\n")
             write(f"  list options: {DIM}/models{RESET}\n")
             return True
         registry = ProviderRegistry.load()
         target = registry.get(arg)
-        if target is None:
-            write(f"{YELLOW}unknown provider {arg!r}{RESET}\n")
-            names = ", ".join(p.name for p in registry.list()) or "(none)"
-            write(f"{DIM}registered: {names}{RESET}\n")
+        if target is not None:
+            ok = _switch_provider(session, target, write)
+            if ok:
+                write(f"{GREEN}✓{RESET} switched to {CYAN}{arg}{RESET} ({target.model})\n")
             return True
-        ok = _switch_provider(session, target, write)
-        if ok:
-            write(f"{GREEN}✓{RESET} switched to {CYAN}{arg}{RESET} ({target.model})\n")
+
+        # Not a registered provider name — try interpreting as a model id and
+        # reuse the current provider's base_url + api_key. Saves the user from
+        # re-running /add when they just want to swap the model on the same
+        # endpoint (the kimi-k2.6 → llama-3.3-70b-instruct dance).
+        provider = getattr(session, "provider", None)
+        base_url = getattr(provider, "_base_url", "")
+        api_key = getattr(provider, "_api_key", "")
+        if base_url and api_key:
+            ok = _switch_model_only(session, arg, base_url, api_key, write)
+            if ok:
+                write(
+                    f"{GREEN}✓{RESET} switched model: {DIM}same endpoint,{RESET} "
+                    f"{CYAN}{arg}{RESET}\n"
+                    f"  {DIM}saved as a new provider for next time. "
+                    f"List with /models.{RESET}\n"
+                )
+                return True
+
+        write(f"{YELLOW}unknown provider or model {arg!r}{RESET}\n")
+        names = ", ".join(p.name for p in registry.list()) or "(none)"
+        write(f"{DIM}registered providers: {names}{RESET}\n")
+        write(f"{DIM}or use: /model <model-id> to swap model on the current endpoint{RESET}\n")
         return True
 
     if head == "/add":
@@ -484,6 +528,62 @@ def _current_provider_name(session: AgentSession) -> str:
     return ""
 
 
+def _switch_model_only(
+    session: AgentSession,
+    model_id: str,
+    base_url: str,
+    api_key: str,
+    write: Callable[[str], None],
+) -> bool:
+    """Swap just the model on the active provider's endpoint+key, register a
+    new entry in the provider registry so the user can /model it next time.
+
+    Auto-derives the new entry's name from the model id (last path segment
+    cleaned, or fallback to "custom"). If the derived name collides we
+    append -2, -3, etc.
+    """
+    import re as _re
+    try:
+        new_provider = OpenAICompatibleProvider(
+            base_url=base_url, api_key=api_key, model=model_id,
+        )
+    except PhantomError as exc:
+        write(f"  failed: {exc.detail or exc}\n")
+        return False
+
+    if hasattr(new_provider, "set_tools_warning_sink"):
+        new_provider.set_tools_warning_sink(lambda msg: write(f"\r{msg}\n"))
+    session.provider = new_provider
+    session.history = [m for m in session.history if m.role != "tool"]
+
+    # Register the new entry for future /model calls.
+    last = model_id.rsplit("/", 1)[-1] or model_id
+    last = _re.sub(r"[^a-z0-9_-]", "-", last.lower()).strip("-") or "custom"
+    if not _re.match(r"^[a-z]", last):
+        last = "m-" + last
+    last = last[:30] or "custom"
+
+    registry = ProviderRegistry.load()
+    candidate = last
+    n = 2
+    while registry.get(candidate) is not None:
+        candidate = f"{last}-{n}"
+        n += 1
+        if n > 99:
+            break
+    try:
+        registry.add(
+            CustomProvider(
+                name=candidate, base_url=base_url, model=model_id,
+                api_key_inline=api_key,
+            ),
+            overwrite=False,
+        )
+    except ValueError:
+        pass  # collision after race; harmless
+    return True
+
+
 def _switch_provider(
     session: AgentSession,
     target: CustomProvider,
@@ -649,7 +749,16 @@ def run_repl(
             write(f"{DIM}error:{RESET} {exc}\n")
             continue
         spinner.stop()
-        write(f"{GREEN}{assistant_label} ›{RESET} {reply}\n\n")
+        write(f"{GREEN}{assistant_label} ›{RESET} {reply}\n")
+        if _looks_garbled(reply):
+            current_model = getattr(session.provider, "_model", "")
+            write(
+                f"\n  \033[33m⚠{RESET} that reply looks garbled "
+                f"({DIM}model {current_model}{RESET}). The model may be "
+                f"misbehaving on this endpoint. Try:\n"
+                f"  {DIM}/reset{RESET} then {DIM}/model meta/llama-3.3-70b-instruct{RESET}\n"
+            )
+        write("\n")
 
 
 def resolve_chat_config(
