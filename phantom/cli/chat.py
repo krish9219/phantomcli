@@ -201,9 +201,39 @@ def _format_tool_call(name: str, args: dict[str, Any]) -> str:
     return f"{DIM}({', '.join(keys)}){RESET}"
 
 
+_WINDOWS_SHELL_GUIDANCE = (
+    "Host OS: Windows. run_bash uses cmd.exe — POSIX commands DO NOT work. "
+    "Specifically:\n"
+    "- DO NOT use `mkdir -p path` (no -p on Windows). Use the write_file "
+    "tool — it auto-creates parent directories. For empty dirs use "
+    "`python -c \"import os; os.makedirs(r'C:\\path', exist_ok=True)\"`.\n"
+    "- DO NOT pipe to `tail`, `head`, `grep` — those don't exist on Windows. "
+    "Use `findstr` for grep-like search.\n"
+    "- Path separators: prefer forward slashes (Python and most tools accept "
+    "them) or use raw strings with backslashes.\n"
+    "- Sequencing: `cmd1 && cmd2` works in cmd.exe. Use `start /b CMD` to "
+    "background a server (needed for `python app.py`, `flask run`, etc.)."
+)
+
+_POSIX_SHELL_GUIDANCE = (
+    "Host OS: {os}. run_bash uses /bin/sh. Standard POSIX is fine "
+    "(mkdir -p, &&, pipes, redirection). Background long-running servers "
+    "with `nohup CMD >server.log 2>&1 &` so the tool returns."
+)
+
+
+def _os_shell_guidance() -> str:
+    """One paragraph injected into the system prompt about host OS quirks."""
+    import platform
+    sysname = platform.system()
+    if sysname == "Windows":
+        return _WINDOWS_SHELL_GUIDANCE
+    return _POSIX_SHELL_GUIDANCE.format(os=sysname or "POSIX")
+
+
 def _personalize_system_prompt(prompt: str, profile: Any) -> str:
     """Substitute the chosen assistant_name into the default prompt and
-    append a short header introducing the user + workspace.
+    append a short header introducing the user + workspace + host OS.
 
     Substituting "Phantom" → assistant_name in-place beats prepending
     a contradictory "you are called X, not Phantom" line — the model
@@ -232,10 +262,9 @@ def _personalize_system_prompt(prompt: str, profile: Any) -> str:
             f"a project without specifying a path, create it under this "
             f"directory in a new sub-folder."
         )
+    persona_header.append(_os_shell_guidance())
 
-    if persona_header:
-        return "\n".join(persona_header) + "\n\n" + body
-    return body
+    return "\n\n".join(persona_header) + "\n\n" + body
 
 
 _SMART_PREFIX = (

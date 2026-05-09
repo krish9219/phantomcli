@@ -13,6 +13,43 @@ The major version cadence:
 
 ---
 
+## [1.1.19] — 2026-05-09 — Host-OS shell guidance in system prompt
+
+Patch release. Triggered by the v1.1.18 user report: "all bash
+commands are not executing properly". The model on Windows kept
+emitting POSIX commands like `mkdir -p path`, `cmd 2>&1 | tail -20`
+that cmd.exe can't parse, so they failed silently (or with
+non-obvious "Invalid switch" errors).
+
+### Fixed
+
+* **`_os_shell_guidance()`** returns a paragraph tailored to the host
+  OS, injected into every chat session's system prompt:
+  - **Windows:** "run_bash uses cmd.exe — POSIX commands DO NOT work.
+    DO NOT use `mkdir -p` (no `-p`); use the write_file tool which
+    auto-creates parents, or `python -c "import os; os.makedirs(...)"`.
+    DO NOT pipe to tail/head/grep — use findstr. Background servers
+    with `start /b CMD`."
+  - **Linux / Darwin:** "run_bash uses /bin/sh. Standard POSIX is
+    fine. Background long-running servers with `nohup CMD >...&`."
+* **OS guidance is now non-negotiable** — even a blank profile gets
+  it. Previously `_personalize_system_prompt` only added persona
+  lines if `user_name` or `workspace_path` was set; on a clean install
+  the model had no idea what OS it was on.
+
+### Tests
+
+* 7 new in `phantom/tests/test_os_shell_guidance.py` covering
+  per-OS guidance content (Windows / Linux / Darwin), full
+  personalize-prompt integration on Windows + Linux, the specific
+  warnings that prevent the v1.1.18 failure modes (no POSIX pipes,
+  redirect to write_file for `mkdir -p` cases).
+* 1 updated in `test_personalization.py`: blank-profile path now
+  asserts OS guidance is appended (was: assert prompt unchanged).
+* Suite: 2417 passed, 0 failed.
+
+---
+
 ## [1.1.18] — 2026-05-09 — run_bash 60s default + server-start guidance
 
 Patch release. Triggered by the v1.1.17 user report: `python app.py`

@@ -61,11 +61,15 @@ def test_personalize_prepends_workspace_when_set():
     assert "Default workspace" in out
 
 
-def test_personalize_with_blank_profile_returns_prompt_unchanged():
+def test_personalize_with_blank_profile_still_adds_os_guidance():
+    """v1.1.19: even a blank profile gets host-OS guidance appended.
+    A model emitting POSIX commands on Windows was the v1.1.18 user
+    bug — the OS line is non-negotiable."""
     prompt = "You are Phantom, a local coding agent."
     profile = Profile()
     out = _personalize_system_prompt(prompt, profile)
-    assert out == prompt
+    assert "Host OS:" in out
+    assert "You are Phantom" in out  # original body preserved
 
 
 def test_personalize_substitution_only_hits_first_occurrence():
