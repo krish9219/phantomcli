@@ -13,6 +13,52 @@ The major version cadence:
 
 ---
 
+## [1.1.8] — 2026-05-09 — /model + /add + /smart slash commands + tool-history scrub
+
+Patch release. Three fixes triggered by the v1.1.7 NVIDIA + minimax test:
+
+1. After tools-fallback latched off, follow-up turns hit a 400
+   *"Message has tool role, but there was no previous assistant message
+   with a tool call!"* because the orphan tool turns from the prior
+   round were still being sent.
+2. No way to switch model from inside chat.
+3. No prompt-engineering helper.
+
+### Fixed
+
+* **Orphan tool-history scrub** — when a request goes out without
+  tools, `OpenAICompatibleProvider` now drops `role="tool"` messages
+  *and* empty assistant turns (which wrapped a stripped tool_calls
+  payload). Fixes the 400 chain.
+
+### Added
+
+* **`/model`** — show the current model.
+* **`/model <name>`** — switch to a registered provider mid-session.
+  The session's provider is rebuilt against the saved entry, the
+  warning sink is rewired, and orphan tool-role history is dropped so
+  the new model doesn't immediately 400.
+* **`/models`** / **`/providers`** — list registered providers,
+  starring the active one and marking the registry default.
+* **`/add`** — launch the setup wizard from inside chat to register a
+  new provider without leaving the session.
+* **`/smart [on|off]`** — toggle prompt-expansion mode. When on,
+  prepends an "expert engineer, restate as a precise spec, then act"
+  preamble to the system prompt. Default off (saves cost).
+* **Coloured `/help`** with all commands grouped and described.
+
+### Tests
+
+* 17 new in `phantom/tests/test_slash_commands.py` covering tool-
+  history scrub (the exact NVIDIA 400 bug), `/help` listing all
+  commands, `/reset` clearing history, `/history` length, `/exit`
+  sentinel, `/models` empty + populated, `/providers` alias, `/model`
+  no-arg / unknown-name / switch / drop-orphans, `/smart` default-off
+  / toggle / state-reporting / system-prompt restoration, and
+  end-to-end `run_repl` slash-with-arg dispatch.
+
+---
+
 ## [1.1.7] — 2026-05-09 — Tools-fallback + thinking spinner
 
 Patch release. Two fixes triggered by the v1.1.6 NVIDIA + minimax test:

@@ -213,6 +213,19 @@ class OpenAICompatibleProvider:
         messages: list[ProviderMessage],
         tools: list[dict[str, Any]],
     ) -> ProviderResponse:
+        # When tools are off, scrub the orphaned residue of prior
+        # tool-call rounds: any role="tool" message, and any empty
+        # assistant message (those wrap a tool_calls payload that the
+        # encoder drops). Otherwise NVIDIA / OpenAI reject with
+        # "tool role with no preceding assistant tool call" — the
+        # orphans survive a mid-session tools-fallback latch.
+        if not tools:
+            messages = [
+                m for m in messages
+                if m.role != "tool"
+                and not (m.role == "assistant" and not m.content.strip())
+            ]
+
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": [self._encode_message(m) for m in messages],

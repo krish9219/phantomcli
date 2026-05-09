@@ -48,7 +48,184 @@ from phantom.memory import MemoryStore
 __all__ = ["chat", "resolve_chat_config", "run_repl"]
 
 
-SLASH_COMMANDS = {"/exit", "/quit", "/reset", "/history", "/help"}
+SLASH_COMMANDS = {
+    "/exit", "/quit",
+    "/reset", "/history", "/help",
+    "/model", "/models", "/providers",
+    "/add",
+    "/smart",
+}
+
+# Sentinel returned by _handle_slash to mean "exit the REPL".
+_SLASH_EXIT = object()
+
+
+_SMART_PREFIX = (
+    "You are an expert engineer. Before responding, first restate the user's "
+    "request as a precise spec: list the explicit requirements, identify any "
+    "implicit ones, and pick reasonable defaults for anything ambiguous. "
+    "Then act on the spec. Original request:\n\n"
+)
+
+
+def _handle_slash(
+    *,
+    session: AgentSession,
+    head: str,
+    arg: str,
+    write: Callable[[str], None],
+) -> Any:
+    """Dispatch a slash command. Returns truthy if handled (continue loop),
+    ``_SLASH_EXIT`` to break out of the REPL, falsy to fall through.
+    """
+    DIM = "\033[2m"
+    CYAN = "\033[36m"
+    GREEN = "\033[32m"
+    YELLOW = "\033[33m"
+    RESET = "\033[0m"
+
+    if head in ("/exit", "/quit"):
+        return _SLASH_EXIT
+
+    if head == "/reset":
+        session.history.clear()
+        write(f"{DIM}(history cleared){RESET}\n")
+        return True
+
+    if head == "/history":
+        write(f"{DIM}(history length: {len(session.history)}){RESET}\n")
+        return True
+
+    if head == "/help":
+        write(f"{DIM}slash commands:{RESET}\n")
+        write(f"  {CYAN}/model{RESET} {DIM}— show current model{RESET}\n")
+        write(f"  {CYAN}/model <name>{RESET} {DIM}— switch to a registered provider{RESET}\n")
+        write(f"  {CYAN}/models{RESET} {DIM}— list registered providers (alias /providers){RESET}\n")
+        write(f"  {CYAN}/add{RESET} {DIM}— add a new provider via the wizard{RESET}\n")
+        write(f"  {CYAN}/smart [on|off]{RESET} {DIM}— toggle prompt-expansion mode{RESET}\n")
+        write(f"  {CYAN}/reset{RESET} {DIM}— clear conversation history{RESET}\n")
+        write(f"  {CYAN}/history{RESET} {DIM}— show history length{RESET}\n")
+        write(f"  {CYAN}/help{RESET} {DIM}— this list{RESET}\n")
+        write(f"  {CYAN}/exit{RESET} {DIM}— quit (also /quit){RESET}\n")
+        return True
+
+    if head in ("/models", "/providers"):
+        registry = ProviderRegistry.load()
+        rows = registry.list()
+        if not rows:
+            write(f"{DIM}(no providers configured — use /add){RESET}\n")
+            return True
+        current = _current_provider_name(session)
+        for p in rows:
+            mark = f"{GREEN}*{RESET}" if p.name == current else " "
+            default_mark = " (default)" if p.name == registry.default_name else ""
+            write(f"  {mark} {p.name:<16} {p.model:<40} {DIM}{p.base_url}{default_mark}{RESET}\n")
+        return True
+
+    if head == "/model":
+        if not arg:
+            write(f"  current model: {CYAN}{getattr(session.provider, '_model', '?')}{RESET}\n")
+            write(f"  switch with:  {DIM}/model <provider-name>{RESET}\n")
+            write(f"  list options: {DIM}/models{RESET}\n")
+            return True
+        registry = ProviderRegistry.load()
+        target = registry.get(arg)
+        if target is None:
+            write(f"{YELLOW}unknown provider {arg!r}{RESET}\n")
+            names = ", ".join(p.name for p in registry.list()) or "(none)"
+            write(f"{DIM}registered: {names}{RESET}\n")
+            return True
+        ok = _switch_provider(session, target, write)
+        if ok:
+            write(f"{GREEN}✓{RESET} switched to {CYAN}{arg}{RESET} ({target.model})\n")
+        return True
+
+    if head == "/add":
+        from phantom.cli.setup_wizard import run_wizard
+        result = run_wizard()
+        if not result.cancelled and result.provider is not None:
+            write(
+                f"{DIM}use it now with:{RESET} "
+                f"{CYAN}/model {result.provider.name}{RESET}\n"
+            )
+        return True
+
+    if head == "/smart":
+        flag = arg.strip().lower()
+        if flag in ("on", "1", "true", "yes"):
+            _set_smart(session, True)
+            write(f"{GREEN}✓{RESET} smart mode {DIM}on{RESET} — prompts will be expanded into precise specs.\n")
+        elif flag in ("off", "0", "false", "no"):
+            _set_smart(session, False)
+            write(f"{GREEN}✓{RESET} smart mode {DIM}off{RESET}\n")
+        else:
+            cur = "on" if _is_smart(session) else "off"
+            write(f"  smart mode: {CYAN}{cur}{RESET}  ({DIM}/smart on{RESET} or {DIM}/smart off{RESET})\n")
+        return True
+
+    return False
+
+
+def _current_provider_name(session: AgentSession) -> str:
+    """Reverse-lookup which registered provider matches the live session."""
+    p = getattr(session, "provider", None)
+    if p is None:
+        return ""
+    base_url = getattr(p, "_base_url", "")
+    model = getattr(p, "_model", "")
+    for entry in ProviderRegistry.load().list():
+        if entry.base_url.rstrip("/") == base_url and entry.model == model:
+            return entry.name
+    return ""
+
+
+def _switch_provider(
+    session: AgentSession,
+    target: CustomProvider,
+    write: Callable[[str], None],
+) -> bool:
+    """Rebuild ``session.provider`` against *target*. Latches off tools by
+    default for the new provider — the next call will probe via the
+    fallback if the model actually rejects."""
+    api_key = ""
+    if target.api_key_env:
+        api_key = os.environ.get(target.api_key_env, "")
+    if not api_key:
+        api_key = target.api_key_inline
+
+    try:
+        new_provider = OpenAICompatibleProvider(
+            base_url=target.base_url,
+            api_key=api_key,
+            model=target.model,
+        )
+    except PhantomError as exc:
+        write(f"  failed: {exc.detail or exc}\n")
+        return False
+
+    if hasattr(new_provider, "set_tools_warning_sink"):
+        new_provider.set_tools_warning_sink(lambda msg: write(f"\r{msg}\n"))
+    session.provider = new_provider
+    # Drop tool residue so the new model doesn't choke on orphan tool turns.
+    session.history = [m for m in session.history if m.role != "tool"]
+    return True
+
+
+def _set_smart(session: AgentSession, on: bool) -> None:
+    """Toggle smart-mode by mutating the system prompt prefix."""
+    base = getattr(session, "_phantom_base_system_prompt", None)
+    if base is None:
+        # First toggle: remember the original system prompt.
+        session._phantom_base_system_prompt = session.system_prompt
+        base = session.system_prompt
+    if on:
+        session.system_prompt = _SMART_PREFIX + base
+    else:
+        session.system_prompt = base
+
+
+def _is_smart(session: AgentSession) -> bool:
+    return session.system_prompt.startswith(_SMART_PREFIX)
 
 
 def _build_provider(
@@ -116,19 +293,21 @@ def run_repl(
         prompt = line.rstrip("\n")
         if not prompt:
             continue
-        if prompt in SLASH_COMMANDS:
-            if prompt in ("/exit", "/quit"):
+
+        # Slash commands accept arguments: `/model llama-3.3-70b-instruct`.
+        head, _, tail = prompt.partition(" ")
+        if head in SLASH_COMMANDS:
+            handled = _handle_slash(
+                session=session,
+                head=head,
+                arg=tail.strip(),
+                write=write,
+            )
+            if handled is _SLASH_EXIT:
                 return 0
-            if prompt == "/reset":
-                session.history.clear()
-                write(f"{DIM}(history cleared){RESET}\n")
+            if handled:
                 continue
-            if prompt == "/history":
-                write(f"{DIM}(history length: {len(session.history)}){RESET}\n")
-                continue
-            if prompt == "/help":
-                write(f"{DIM}slash commands: " + ", ".join(sorted(SLASH_COMMANDS)) + f"{RESET}\n")
-                continue
+            # Unhandled slash falls through to LLM. Shouldn't normally happen.
 
         spinner = PhantomSpinner()
         spinner.start()
