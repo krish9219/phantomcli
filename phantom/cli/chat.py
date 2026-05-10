@@ -1462,22 +1462,57 @@ def run_repl(
                     except Exception:
                         return f"\n{user_label} > "
 
+                # Paste placeholder state — Claude Code style.
+                # When a multi-line clipboard paste lands, prompt_toolkit
+                # inserts the text into the buffer (we can't intercept
+                # the bracketed-paste keystrokes cleanly across all
+                # terminals). On submit, we erase the user's pasted lines
+                # from the displayed scrollback and replace them with a
+                # single-line `[Pasted text #N +X lines, Y chars]` summary.
+                # The full text is still passed to the model.
+                _paste_counter = {"n": 0}
+                DIM = "\033[2m"
+
+                def _erase_lines_above(n: int):
+                    """Move cursor up N lines and clear each. Safe no-op
+                    on terminals without VT mode (caller already enabled
+                    VT at startup)."""
+                    if n <= 0:
+                        return
+                    # \033[F = cursor up + start of line; \033[K = clear to EOL
+                    sys.stdout.write(("\033[F\033[K" * n))
+                    sys.stdout.flush()
+
                 def _read():
                     try:
                         text = _chat_session.prompt(_build_prompt_label())
                     except (EOFError, KeyboardInterrupt):
                         return ""
-                    # Show paste-indicator AFTER the user submits if the
-                    # message was multi-line. Prints to stderr so it
-                    # doesn't pollute stdout and gets recorded above the
-                    # spinner. Does NOT alter the submitted text.
                     if text and text.count("\n") >= 2:
                         n_lines = text.count("\n") + 1
                         n_chars = len(text)
-                        sys.stdout.write(
-                            f"\033[2m[Pasted: {n_lines} lines, {n_chars} chars]\033[0m\n"
-                        )
-                        sys.stdout.flush()
+                        _paste_counter["n"] += 1
+                        idx = _paste_counter["n"]
+                        # Erase the prompt-toolkit echo of the multi-line
+                        # paste from the visible scrollback, then print a
+                        # clean placeholder. The first prompt-line stays;
+                        # we only erase the ADDITIONAL lines that the
+                        # paste added (n_lines - 1).
+                        try:
+                            _erase_lines_above(n_lines - 1)
+                            sys.stdout.write(
+                                f"  {DIM}[Pasted text #{idx} "
+                                f"+{n_lines} lines, {n_chars} chars]{RESET}\n"
+                            )
+                            sys.stdout.flush()
+                        except Exception:
+                            # Non-VT terminal: fall back to the v1.1.27
+                            # behaviour (just append the indicator).
+                            sys.stdout.write(
+                                f"{DIM}[Pasted text #{idx} "
+                                f"+{n_lines} lines, {n_chars} chars]{RESET}\n"
+                            )
+                            sys.stdout.flush()
                     return text + "\n"
                 read_line = _read
                 # Mark that the prompt label is owned by prompt-toolkit
@@ -1745,6 +1780,12 @@ def chat(
                 err=True,
             )
             raise typer.Exit(2)
+
+    # Enable ANSI escape rendering on Windows BEFORE the boot banner
+    # writes any colours. Without this, PowerShell 5.x renders every
+    # `\033[36m` as literal `^[[36m` garbage.
+    from phantom.cli._terminal import enable_ansi
+    enable_ansi()
 
     # Onboarding (one-time): prompt for name + workspace before chat.
     from phantom.cli.boot import onboard_if_needed, render_boot_banner

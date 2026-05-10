@@ -13,6 +13,49 @@ The major version cadence:
 
 ---
 
+## [1.1.28] — 2026-05-10 — Windows VT mode + Claude-Code paste placeholder + knowledge-vs-tool prompt fix
+
+Three honest fixes after the v1.1.27 user transcript exposed real
+TUI bugs I should have caught in v1.1.26.
+
+### Fixed
+
+* **Windows ANSI colours render as literal `^[[36m` garbage** in
+  PowerShell 5.x. New `phantom.cli._terminal.enable_ansi()` calls
+  `kernel32.SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING)`
+  on Windows for both stdout and stderr handles. Falls back to
+  `colorama.just_fix_windows_console()` if ctypes/Win32 fails. Called
+  at the top of `chat()` and the outer `phantom>` REPL — before any
+  banner colour writes.
+* **Pasted text echoed twice** — once as the user typed/pasted, once
+  as the `[Pasted: N lines]` summary. v1.1.28 erases the pasted lines
+  from the visible scrollback after submit (using `\033[F\033[K` per
+  line) and replaces them with a single `[Pasted text #N +X lines, Y
+  chars]` placeholder à la Claude Code. Full text is still sent to
+  the model. Falls back to v1.1.27 behaviour on terminals that don't
+  support cursor-up.
+* **Knowledge questions trigger tool calls** — the v1.1.16 "act, don't
+  narrate" rule was too aggressive. Asking "explain async/await"
+  caused the model to write `async_explainer.py` and run it (5+ min
+  of file rewrites) instead of streaming a markdown answer. Added a
+  new section to `DEFAULT_SYSTEM_PROMPT`: *"When to use tools — and
+  when NOT to"*. Tools are for filesystem/shell/web/memory operations.
+  For pure-knowledge questions ("explain X", "compare A vs B", "what
+  is Y", "how does Z work") the model answers directly in markdown.
+  The "act, don't narrate" rule still fires for actual build/run/fix
+  tasks.
+
+### Tests
+
+* 7 new in `phantom/tests/test_v1_1_28_fixes.py`: POSIX no-op,
+  idempotency, Windows SetConsoleMode call (verifies VT flag is OR'd
+  in for both stdout + stderr), colorama fallback when kernel32
+  fails, returns False when everything fails, system prompt has the
+  knowledge-vs-tool clause, "act, don't narrate" rule preserved.
+* Suite: 2541 passed, 0 failed.
+
+---
+
 ## [1.1.27] — 2026-05-10 — Streaming responses + interactive `/confirm` gate
 
 The two items I deferred in v1.1.26 are now in.

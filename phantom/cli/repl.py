@@ -260,6 +260,8 @@ def run_repl() -> None:
     from phantom._version import __version__
     from phantom.licensing import license_status
     from phantom.cli import app  # imported here to avoid circular import at module-load time
+    from phantom.cli._terminal import enable_ansi
+    enable_ansi()
 
     s = license_status()
     detail = ""
