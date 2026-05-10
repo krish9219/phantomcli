@@ -52,6 +52,12 @@ ALLOWED = {
     # user input ever reaches argv. Linux path uses /proc directly and
     # never enters this branch.
     PHANTOM_DIR / "cli" / "sysinfo.py",
+    # _terminal.py uses `os.system("")` (empty command) to nudge the
+    # Windows console host into initialising VT mode. The argument is
+    # always the literal empty string — no user input, no shell injection
+    # surface. Required because PowerShell 5.x doesn't enable
+    # ENABLE_VIRTUAL_TERMINAL_PROCESSING by default.
+    PHANTOM_DIR / "cli" / "_terminal.py",
     # ─── v1.0 exemptions ────────────────────────────────────────────
     # Each carries its own justification; the common shape is "shells
     # out to a developer-trusted external tool (git, gh, pytest, sox)

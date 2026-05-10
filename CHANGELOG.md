@@ -13,6 +13,79 @@ The major version cadence:
 
 ---
 
+## [1.1.29] — 2026-05-10 — Five user-reported bugs from the v1.1.28 transcript
+
+Five concrete fixes after the v1.1.28 user transcript exposed:
+ANSI still rendering literally, "I am Ling" still leaking, three
+parallel servers picking the same port, paste leaving the first
+line visible, spinner not running through tool calls.
+
+### Fixed
+
+* **Windows ANSI for real** — v1.1.28's `enable_ansi()` had a typing
+  bug (no `argtypes`/`restype` on ctypes calls) and silently failed
+  on at least one user host. v1.1.29 stacks four strategies:
+  1. `os.system("")` (cheapest Windows VT init via console-host
+     side effect, works on Win10 1607+).
+  2. Native `SetConsoleMode` via ctypes with explicit type bindings.
+  3. Colorama's `just_fix_windows_console`.
+  4. Final fallback: install ANSI-stripping stdout/stderr wrappers
+     so output is monochrome but readable instead of `^[[36m` garbage.
+* **Identity post-processing** — model still leaks "I am Ling" /
+  "developed by Ant Group" under social-engineering framings even
+  with the v1.1.22/23 anchor. v1.1.29 adds a regex post-filter that
+  rewrites every reply (and streaming chunks) replacing leaked brand
+  identities with the user's chosen `assistant_name`. Belt-and-braces
+  alongside the system-prompt anchor. The trailing tail is bounded
+  to 120 non-period non-newline chars so a periodless reply doesn't
+  get its whole tail eaten by a greedy match.
+* **Streaming lookback hardened** — the live filter retains a 192-char
+  lookback (was 64) so a brand string landing across a force-flush
+  boundary stays in the retained tail instead of leaking through the
+  cleaned head. Force-flush threshold bumped 256 → 1024 so models
+  usually hit a sentence boundary first.
+* **Atomic port reservation** — three sequential `start_server` tool
+  calls in one turn all probed port 5001 *before any child actually
+  bound it*, so all three thought 5001 was free. v1.1.29 adds a
+  process-local `_RESERVED_PORTS` table with 15s expiry: when a
+  reservation is handed out, the next concurrent call sees that port
+  as taken and bumps to the next free one. Atomic via threading lock.
+* **Paste placeholder off-by-one** — v1.1.28 erased `n_lines - 1`
+  lines, leaving the first line of the pasted block visible above
+  the placeholder. v1.1.29 erases `n_lines + 1` and re-prints the
+  prompt label cleanly, so all the user sees is the placeholder.
+* **Spinner continuity** — tool result printer now does `\\r\\033[K`
+  before printing, so the spinner doesn't end up on the same line
+  as the result preview. The spinner thread continues to render
+  underneath each tool block, giving the Claude-Code-style continuous
+  animation feel through the whole turn.
+
+### Tests
+
+* 34 new in `phantom/tests/test_v1_1_29_fixes.py`: ANSI strip wrapper
+  (escape codes, plain text, complex sequences), `enable_ansi`
+  stacked strategy (POSIX, os.system trick, strip fallback), identity
+  post-processing (parametrised brand patterns + "developed by"
+  clauses + leaving legitimate text alone + empty input + default
+  name + periodless-tail bound + 120-char cap + newline anchor),
+  streaming lookback constants + cross-boundary brand simulation,
+  atomic port reservation (sequential, already-reserved, expired,
+  exhausted, in-use), `_erase_lines_above` math + zero-no-op, paste
+  placeholder structural assertion, tool-call/result printer
+  spinner-clearing prefix contract. Plus 2 v1.1.28 tests updated.
+* New `_reset_port_reservations` autouse fixture in
+  `test_start_server.py` so `_RESERVED_PORTS` doesn't leak across
+  tests.
+* `tests/sandbox/test_no_unsandboxed_subprocess.py` allowlist gains
+  `phantom/cli/_terminal.py` for the literal `os.system("")` trick.
+* Module-level `_emit_tool_call_line`, `_emit_tool_result_line`,
+  `_erase_lines_above` extracted from inline closures so the
+  spinner-continuity and paste-placeholder contracts are unit-testable
+  without spinning up a full chat session.
+* Suite: 2575 passed, 8 skipped, 0 failed.
+
+---
+
 ## [1.1.28] — 2026-05-10 — Windows VT mode + Claude-Code paste placeholder + knowledge-vs-tool prompt fix
 
 Three honest fixes after the v1.1.27 user transcript exposed real

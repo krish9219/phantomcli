@@ -75,17 +75,31 @@ def _start_server(args: dict[str, Any], *, workdir: str) -> str:
     wait_s = float(args.get("wait_s", 3.0))
     wait_s = max(0.0, min(wait_s, 30.0))
 
-    # Auto-port: if the requested port is already taken, try requested+1..+20
-    # and rewrite the command to use the first free one. Only does this when
-    # the model passed --port / -p / FLASK_RUN_PORT-style args we can rewrite.
+    # Auto-port: atomic reservation. With three sequential start_server
+    # calls in one turn, naive `_is_port_in_use` checks see "5000 free"
+    # for all three because the first child hasn't bound yet. The
+    # process-local reservation table closes that race.
     port = requested_port
     port_rewrite = None
-    if auto_port and _is_port_in_use(port):
-        for candidate in range(requested_port + 1, requested_port + 21):
-            if not _is_port_in_use(candidate):
-                port = candidate
-                port_rewrite = (requested_port, candidate)
-                break
+    if auto_port:
+        # First check whether the requested port is itself free AND
+        # not already reserved for another concurrent spawn.
+        with _RESERVE_LOCK:
+            now = _port_time.monotonic()
+            already_reserved = (
+                requested_port in _RESERVED_PORTS
+                and _RESERVED_PORTS[requested_port] >= now
+            )
+        if already_reserved or _is_port_in_use(requested_port):
+            new_port = _reserve_free_port(requested_port + 1, requested_port + 20)
+            if new_port is not None:
+                port = new_port
+                port_rewrite = (requested_port, new_port)
+        else:
+            # Reserve the requested port too so a sibling call doesn't
+            # race onto it.
+            with _RESERVE_LOCK:
+                _RESERVED_PORTS[requested_port] = _port_time.monotonic() + 15.0
     if port_rewrite is not None:
         cmd = _rewrite_port(cmd, port_rewrite[0], port_rewrite[1], port_rewrite[1])
 
@@ -183,6 +197,42 @@ def _is_port_in_use(port: int) -> bool:
             return True
     except (OSError, _socket.timeout):
         return False
+
+
+# Process-local port reservation. When the agent emits multiple
+# start_server tool calls in one turn, the first child hasn't bound
+# its port by the time the second call's port-probe runs — without
+# this lock, all calls see the same "free" port and three children
+# fight for the same socket. The reservation is held for 15s after
+# the spawn, by which time the child should have bound (or crashed,
+# in which case the port becomes available again on the next probe).
+import threading as _threading
+import time as _port_time
+_RESERVED_PORTS: dict[int, float] = {}  # port -> expiry epoch
+_RESERVE_LOCK = _threading.Lock()
+
+
+def _reserve_free_port(start: int, end: int) -> int | None:
+    """Atomically reserve the first free port in [start, end].
+
+    Excludes ports listed by the OS as in-use AND ports we just
+    handed out to a previous start_server call this turn (whose child
+    may not have bound yet).
+    """
+    now = _port_time.monotonic()
+    with _RESERVE_LOCK:
+        # Drop expired reservations.
+        for p in list(_RESERVED_PORTS.keys()):
+            if _RESERVED_PORTS[p] < now:
+                del _RESERVED_PORTS[p]
+        for candidate in range(start, end + 1):
+            if candidate in _RESERVED_PORTS:
+                continue
+            if _is_port_in_use(candidate):
+                continue
+            _RESERVED_PORTS[candidate] = now + 15.0
+            return candidate
+    return None
 
 
 def _rewrite_port(cmd: str, old: int, new: int, env_port: int) -> str:

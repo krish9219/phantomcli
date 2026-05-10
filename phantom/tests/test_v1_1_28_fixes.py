@@ -67,44 +67,41 @@ def test_enable_ansi_calls_setconsolemode_on_windows(monkeypatch):
 
 
 def test_enable_ansi_falls_back_to_colorama_on_kernel32_failure(monkeypatch):
-    """If ctypes + Win32 path raises (e.g. ctypes unavailable), fall back
-    to colorama's just_fix_windows_console."""
+    """v1.1.29 stacks 4 strategies. If os.system AND SetConsoleMode both
+    fail, colorama is the next attempt. Verify it gets called.
+    """
     monkeypatch.setattr("phantom.cli._terminal._INITIALIZED", False)
+    monkeypatch.setattr("phantom.cli._terminal._ANSI_OK", False)
     monkeypatch.setattr("os.name", "nt")
+    monkeypatch.setattr("phantom.cli._terminal._try_os_system_trick", lambda: False)
+    monkeypatch.setattr("phantom.cli._terminal._try_setconsolemode", lambda: False)
 
-    # Force the ctypes path to raise.
-    bad_ctypes = MagicMock()
-    bad_ctypes.windll.kernel32.GetStdHandle.side_effect = OSError("no kernel32")
+    called = []
+    def fake_colorama():
+        called.append(True)
+        return True
+    monkeypatch.setattr("phantom.cli._terminal._try_colorama", fake_colorama)
 
-    fake_colorama = MagicMock()
-
-    with patch.dict("sys.modules", {"ctypes": bad_ctypes,
-                                     "ctypes.wintypes": MagicMock(),
-                                     "colorama": fake_colorama}):
-        assert enable_ansi() is True
-    fake_colorama.just_fix_windows_console.assert_called_once()
+    assert enable_ansi() is True
+    assert called == [True]
 
 
-def test_enable_ansi_returns_false_when_everything_fails(monkeypatch):
-    """No Win32, no colorama — return False so the caller can decide
-    whether to skip styling."""
+def test_enable_ansi_falls_back_to_strip_when_everything_fails(monkeypatch):
+    """v1.1.29: when no native path works, install the strip wrapper
+    so output is monochrome but readable. Returns False so the caller
+    can know native colours won't render."""
     monkeypatch.setattr("phantom.cli._terminal._INITIALIZED", False)
+    monkeypatch.setattr("phantom.cli._terminal._ANSI_OK", False)
     monkeypatch.setattr("os.name", "nt")
+    monkeypatch.setattr("phantom.cli._terminal._try_os_system_trick", lambda: False)
+    monkeypatch.setattr("phantom.cli._terminal._try_setconsolemode", lambda: False)
+    monkeypatch.setattr("phantom.cli._terminal._try_colorama", lambda: False)
 
-    bad_ctypes = MagicMock()
-    bad_ctypes.windll.kernel32.GetStdHandle.side_effect = OSError("nope")
-
-    # Make `import colorama` raise.
-    real_import = __builtins__["__import__"] if isinstance(__builtins__, dict) else __builtins__.__import__
-    def fake_import(name, *args, **kwargs):
-        if name == "colorama":
-            raise ImportError("no colorama")
-        return real_import(name, *args, **kwargs)
-
-    with patch.dict("sys.modules", {"ctypes": bad_ctypes,
-                                     "ctypes.wintypes": MagicMock()}):
-        with patch("builtins.__import__", fake_import):
-            assert enable_ansi() is False
+    installed = []
+    monkeypatch.setattr("phantom.cli._terminal._install_strip_wrapper",
+                         lambda: installed.append(True) or True)
+    assert enable_ansi() is False
+    assert installed == [True]
 
 
 # ─── Knowledge-vs-tool clause in DEFAULT_SYSTEM_PROMPT ──────────────────────

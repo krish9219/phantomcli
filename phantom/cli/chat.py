@@ -114,6 +114,45 @@ _EXECUTOR_SYSTEM_PROMPT_SUFFIX = "\n</coder_plan>\n"
 _SLASH_EXIT = object()
 
 
+# Foreign-brand identity patterns that some open-weight models
+# stubbornly leak even with v1.1.22/23's identity hammer. v1.1.29
+# adds a post-processing replacement: rewrite "I am Ling" / "I am
+# DeepSeek" / "I am Llama" → "I'm <assistant_name>" before the user
+# sees the reply. Belt-and-braces alongside the system-prompt anchor.
+#
+# The trailing tail is bounded to 120 non-period non-newline chars so
+# a periodless reply ("I am Ling and you should run npm install")
+# doesn't get its whole tail eaten by a greedy `[^.]*`.
+_BRAND_LEAK_PATTERNS = (
+    # "I am [Brand]" / "I'm [Brand]"
+    (r"\b(?:I am|I'?m|This is)\s+(Ling|DeepSeek|Llama|LLaMA|Qwen|Gemini|Claude|GPT-?\d+|ChatGPT|Mistral|Gemma|Phi-?\d+|Mixtral|Kimi|Yi|Falcon|MPT|StableLM|Vicuna|Wizard|Hermes|Nous|MiniMax|MoonShot|Anthropic'?s?\s+\w+|OpenAI'?s?\s+\w+|Google'?s?\s+\w+|Meta'?s?\s+\w+|Alibaba'?s?\s+\w+|Microsoft'?s?\s+\w+)\b[^.\n]{0,120}",
+        r"I'm {name}"),
+    # "developed by [Company]"
+    (r"\b(?:developed|created|built|trained|made)\s+by\s+(Ant Group|OpenAI|Anthropic|Google|Meta|Alibaba|Microsoft|Mistral AI|DeepSeek|MoonShot|MiniMax|Cohere|Hugging Face|Stability AI|01\.AI|EleutherAI)\b[^.\n]{0,120}",
+        r""),
+)
+
+
+def _post_process_identity(text: str, assistant_name: str) -> str:
+    """Replace any leaked foreign-model identity strings with the user's
+    chosen assistant name. Best-effort — the system-prompt anchor is
+    still the primary defence; this is the safety net."""
+    if not text:
+        return text
+    import re as _re
+    name = (assistant_name or "").strip() or "Phantom"
+    out = text
+    for pattern, replacement in _BRAND_LEAK_PATTERNS:
+        replacement_filled = replacement.replace("{name}", name)
+        out = _re.sub(pattern, replacement_filled, out, flags=_re.IGNORECASE)
+    # Squash double spaces / orphan trailing punctuation introduced by
+    # the substitutions.
+    out = _re.sub(r"  +", " ", out)
+    out = _re.sub(r"\s+([.,;:])", r"\1", out)
+    out = _re.sub(r"\.\s*\.", ".", out)
+    return out
+
+
 _THINK_BLOCK_RE = None  # populated lazily to keep import-time work small
 
 
@@ -287,6 +326,58 @@ def _format_tool_result_preview(name: str, result_str: str) -> str:
         rec_id = data.get("id", "")
         return f"      {DIM}{GREEN}✓{RESET}{DIM} stored ({rec_id}){RESET}"
     return ""
+
+
+# ─── Spinner-aware print helpers (v1.1.29) ────────────────────────────────
+# The chat loop runs a spinner on the bottom line through every tool call.
+# Each of these helpers starts its output with `\r\033[K` so the spinner's
+# current frame is wiped before the new text lands. The spinner thread
+# redraws on the next freshly-blank line below on its next ~80ms tick,
+# giving the Claude-Code-style continuous animation feel.
+#
+# `out` accepts any object with `.write(str)` and `.flush()` — defaults to
+# stdout. Tests pass StringIO / MagicMock to capture exactly what was
+# emitted, which is how the spinner-continuity contract is verified.
+
+def _emit_tool_call_line(name: str, args: dict[str, Any], out: Any = None) -> None:
+    """Print one tool-call line over the spinner. Always starts with
+    `\\r\\033[K` so the spinner frame underneath is overwritten cleanly."""
+    if out is None:
+        out = sys.stdout
+    icon = _tool_icon(name)
+    summary = _format_tool_call(name, args)
+    out.write(
+        f"\r\033[K  \033[2m{icon}\033[0m \033[36m{name}\033[0m {summary}\n"
+    )
+    out.flush()
+
+
+def _emit_tool_result_line(name: str, result: str, out: Any = None) -> None:
+    """Print the result-preview line over the spinner. Skips silently
+    when the preview is empty (some tools have no useful summary)."""
+    if out is None:
+        out = sys.stdout
+    preview = _format_tool_result_preview(name, result)
+    if not preview:
+        return
+    out.write(f"\r\033[K{preview}\n")
+    out.flush()
+
+
+def _erase_lines_above(n: int, out: Any = None) -> None:
+    """Move cursor up N lines and clear each.
+
+    Used by the multi-line paste placeholder: prompt_toolkit echoes the
+    full pasted block to the screen, then we erase the echo and replace
+    it with a one-line summary. Safe no-op on n <= 0 and on terminals
+    without VT mode (the caller has a try/except wrapper)."""
+    if out is None:
+        out = sys.stdout
+    if n <= 0:
+        return
+    # \033[F = cursor up + start of line; \033[K = clear to EOL
+    out.write("\033[F\033[K" * n)
+    out.flush()
 
 
 def _prompt_user_approval(tc, write: Callable[[str], None]) -> bool:
@@ -1473,15 +1564,8 @@ def run_repl(
                 _paste_counter = {"n": 0}
                 DIM = "\033[2m"
 
-                def _erase_lines_above(n: int):
-                    """Move cursor up N lines and clear each. Safe no-op
-                    on terminals without VT mode (caller already enabled
-                    VT at startup)."""
-                    if n <= 0:
-                        return
-                    # \033[F = cursor up + start of line; \033[K = clear to EOL
-                    sys.stdout.write(("\033[F\033[K" * n))
-                    sys.stdout.flush()
+                # _erase_lines_above is the module-level helper (testable);
+                # we used to define a closure copy here.
 
                 def _read():
                     try:
@@ -1494,14 +1578,23 @@ def run_repl(
                         _paste_counter["n"] += 1
                         idx = _paste_counter["n"]
                         # Erase the prompt-toolkit echo of the multi-line
-                        # paste from the visible scrollback, then print a
-                        # clean placeholder. The first prompt-line stays;
-                        # we only erase the ADDITIONAL lines that the
-                        # paste added (n_lines - 1).
+                        # paste from the visible scrollback, then print
+                        # a clean placeholder. The cursor is on a NEW
+                        # blank line right after submission, so the
+                        # paste occupies n_lines lines above us — and
+                        # the prompt-label line is the FIRST of those
+                        # (because the user's paste started on the
+                        # prompt line). v1.1.28 erased n_lines - 1
+                        # which left the first line of the paste
+                        # visible; v1.1.29 erases n_lines + 1 (paste
+                        # + the trailing blank that prompt_toolkit
+                        # leaves), then re-prints both the prompt
+                        # label and the placeholder cleanly.
                         try:
-                            _erase_lines_above(n_lines - 1)
+                            _erase_lines_above(n_lines + 1)
                             sys.stdout.write(
-                                f"  {DIM}[Pasted text #{idx} "
+                                f"\n{CYAN}{user_label} ›{RESET} "
+                                f"{DIM}[Pasted text #{idx} "
                                 f"+{n_lines} lines, {n_chars} chars]{RESET}\n"
                             )
                             sys.stdout.flush()
@@ -1591,6 +1684,7 @@ def run_repl(
         _ss = getattr(session, "_phantom_stream_state", None)
         if _ss is not None:
             _ss["started"] = False
+            _ss["buffer"] = ""
 
         spinner = PhantomSpinner()
         spinner.start()
@@ -1657,12 +1751,29 @@ def run_repl(
         if prior_system_prompt is not None:
             session.system_prompt = prior_system_prompt
         reply = _strip_thinking_tags(reply)
+        # Identity safety net — replace any leaked "I am Ling" / "I'm
+        # DeepSeek" / etc. with the user's chosen assistant name.
+        # Belt-and-braces alongside the system-prompt anchor.
+        # `run_repl` is called from both `chat()` (with a profile in
+        # scope) and from unit tests (no profile). Read the name from
+        # the session attribute we set in chat(), or fall back to a
+        # safe default.
+        _assistant_name = getattr(session, "_phantom_assistant_name", "Phantom")
+        reply = _post_process_identity(reply, _assistant_name)
         # If streaming already pushed text live, finish the line and
         # skip the markdown re-render — re-printing the same text twice
         # would be jarring. The streamed output is plain (not markdown-
         # rendered), which is the standard tradeoff for live token output.
         streamed = bool(_ss and _ss.get("started"))
         if streamed:
+            # Flush any buffered tail through the identity filter
+            # before closing the line.
+            tail = _ss.get("buffer", "") if _ss else ""
+            if tail:
+                cleaned = _post_process_identity(tail, _assistant_name)
+                sys.stdout.write(cleaned)
+                if _ss is not None:
+                    _ss["buffer"] = ""
             write("\n\n")
         else:
             # Non-streamed turn (provider didn't support stream, or
@@ -1835,6 +1946,10 @@ def chat(
     if profile.god_mode:
         _set_god_mode(session, True)
 
+    # Stash the assistant name on the session so run_repl can read it
+    # without depending on a profile in scope (also used from tests).
+    session._phantom_assistant_name = profile.assistant_name or "Phantom"
+
     # Identity hammer for adversarial models. The session injects this
     # as a 2nd system message right before each user turn — much harder
     # to ignore than a single up-front anchor.
@@ -1847,30 +1962,36 @@ def chat(
         )
 
     # Show each tool call live so a long turn doesn't look stuck. The
-    # spinner pauses, the call + a per-tool icon are printed, then on
-    # the result we print a short preview line (success ✓, exit code,
-    # bytes written, diff, URL, etc.).
+    # spinner stays running across the entire turn (Claude-Code style):
+    # tool lines slide in above the current spinner frame, the spinner
+    # then re-renders on the next line below. Continuous animation feel.
+    # The actual line emit is in _emit_tool_call_line / _emit_tool_result_line
+    # at module scope so they can be unit-tested without spinning up a
+    # full chat session.
     def _tool_call_printer(_round_idx, tc):
-        icon = _tool_icon(tc.name)
-        summary = _format_tool_call(tc.name, tc.arguments)
-        sys.stdout.write(
-            f"\r\033[K  \033[2m{icon}\033[0m \033[36m{tc.name}\033[0m {summary}\n"
-        )
-        sys.stdout.flush()
+        _emit_tool_call_line(tc.name, tc.arguments)
 
     def _tool_result_printer(_round_idx, tc, result):
-        preview = _format_tool_result_preview(tc.name, result)
-        if preview:
-            sys.stdout.write(preview + "\n")
-            sys.stdout.flush()
+        _emit_tool_result_line(tc.name, result)
 
     session.on_tool_call = _tool_call_printer
     session.on_tool_result = _tool_result_printer
 
     # Stream tokens live as the model produces them. Stops the spinner
-    # on first chunk, prints text inline, restarts a new line on tool
-    # calls.
-    _stream_state = {"started": False, "spinner": None}
+    # on first chunk, prints text inline, identity-filters each chunk
+    # so leaked foreign brand strings get rewritten as they arrive.
+    #
+    # Lookback math: the longest brand pattern is ~24 chars
+    # ("developed by Stability AI") plus the bounded `[^.\n]{0,120}`
+    # tail = 144 chars. We keep STREAM_LOOKBACK >= 192 so a brand
+    # string that lands across a force-flush boundary is still in
+    # the retained tail when the next chunk arrives. The force-flush
+    # threshold is bumped to 1024 so the model usually hits a sentence
+    # boundary first; the buffer cap exists only so a long bullet list
+    # without periods doesn't grow unbounded.
+    STREAM_LOOKBACK = 192
+    STREAM_FLUSH_AT = 1024
+    _stream_state = {"started": False, "spinner": None, "buffer": ""}
     def _on_text_chunk(chunk: str):
         if not _stream_state["started"]:
             _stream_state["started"] = True
@@ -1881,8 +2002,22 @@ def chat(
                 except Exception:
                     pass
             sys.stdout.write(f"\r\033[K{GREEN}{profile.assistant_name.lower() or 'phantom'} ›{RESET} ")
-        sys.stdout.write(chunk)
-        sys.stdout.flush()
+        _stream_state["buffer"] += chunk
+        buf = _stream_state["buffer"]
+        if len(buf) >= STREAM_FLUSH_AT:
+            head, tail = buf[:-STREAM_LOOKBACK], buf[-STREAM_LOOKBACK:]
+            cleaned = _post_process_identity(head, profile.assistant_name)
+            sys.stdout.write(cleaned)
+            _stream_state["buffer"] = tail
+            sys.stdout.flush()
+        # If the chunk ended on a sentence boundary, flush the cleaned
+        # buffer in full — patterns are bounded by `.` so any complete
+        # match is now self-contained.
+        elif chunk and chunk[-1] in ".!?\n":
+            cleaned = _post_process_identity(buf, profile.assistant_name)
+            sys.stdout.write(cleaned)
+            _stream_state["buffer"] = ""
+            sys.stdout.flush()
     session.on_text_chunk = _on_text_chunk
     session._phantom_stream_state = _stream_state  # so run_repl can reset it per turn
 

@@ -21,6 +21,17 @@ import pytest
 from phantom.agent.tools import _guess_port, _start_server, default_tools
 
 
+@pytest.fixture(autouse=True)
+def _reset_port_reservations():
+    """Clear the process-local port reservation table before each test
+    so v1.1.29 reservations from earlier tests don't bump this test's
+    'expected port 5000' off to 5001."""
+    from phantom.agent import tools
+    tools._RESERVED_PORTS.clear()
+    yield
+    tools._RESERVED_PORTS.clear()
+
+
 # ─── _guess_port ─────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("cmd,expected", [
