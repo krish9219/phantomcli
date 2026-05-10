@@ -13,6 +13,46 @@ The major version cadence:
 
 ---
 
+## [1.1.30] — 2026-05-10 — Windows ANSI ACTUALLY fixed (read-back verification)
+
+v1.1.29 was supposed to fix the literal `^[[36m` Windows rendering bug
+but didn't — users on PowerShell 5.x kept seeing it. Root cause:
+`_try_os_system_trick()` always returns truthy because `os.system("")`
+runs successfully whether or not VT mode actually enables.
+v1.1.29 took that as a success signal, set `_ANSI_OK = True`, and never
+reached the strip fallback.
+
+### Fixed
+
+* **`enable_ansi()` now verifies via read-back** — after each Windows
+  attempt (`os.system("")`, `SetConsoleMode`), the function calls
+  `GetConsoleMode` and checks whether the
+  `ENABLE_VIRTUAL_TERMINAL_PROCESSING` flag is actually on. If not,
+  it falls through to the next strategy. If every strategy fails
+  verification AND colorama is unavailable, the strip wrapper
+  installs and the user sees plain text instead of `^[[36m` garbage.
+* **Pre-flight checks**: honour `NO_COLOR` (https://no-color.org) and
+  `PHANTOM_NO_COLOR` env vars, detect non-TTY stdout (piped/redirected
+  output), and detect `TERM=dumb`. In any of those cases, install the
+  strip wrapper unconditionally — escapes won't render and would leak
+  as literal text.
+* `_try_os_system_trick()` and `_try_setconsolemode()` no longer
+  return bool — the verifier is the only honest signal. They're
+  fire-and-forget side-effect calls now.
+
+### Tests
+
+* 11 new in `test_v1_1_30_fixes.py`: NO_COLOR opt-out, PHANTOM_NO_COLOR
+  opt-out, redirected-stdout strip, TERM=dumb strip, verifier-on-POSIX
+  short-circuit, SetConsoleMode-reached-after-os.system-fails-verify,
+  strip-fallback-when-verification-keeps-failing (the user-reported
+  v1.1.29 regression), colorama-when-SetConsoleMode-doesnt-stick,
+  strategy fns return None, idempotency after strip install.
+* v1.1.28 + v1.1.29 ANSI tests updated for the new verifier-driven API.
+* Suite: 2586 passed, 8 skipped, 0 failed.
+
+---
+
 ## [1.1.29] — 2026-05-10 — Five user-reported bugs from the v1.1.28 transcript
 
 Five concrete fixes after the v1.1.28 user transcript exposed:

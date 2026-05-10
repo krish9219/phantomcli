@@ -58,20 +58,34 @@ def test_ansi_strip_wrapper_handles_complex_escape_sequences():
 
 # ─── enable_ansi stacked strategy ──────────────────────────────────────────
 
-def test_enable_ansi_returns_true_on_posix(monkeypatch):
-    monkeypatch.setattr("os.name", "posix")
+def _isolate(monkeypatch):
+    """Reset terminal-init state and disable pre-flight checks so the
+    test drives the Windows strategy path."""
     monkeypatch.setattr("phantom.cli._terminal._INITIALIZED", False)
     monkeypatch.setattr("phantom.cli._terminal._ANSI_OK", False)
+    monkeypatch.setattr("phantom.cli._terminal._no_color_requested", lambda: False)
+    monkeypatch.setattr("phantom.cli._terminal._stdout_is_redirected", lambda: False)
+    monkeypatch.setattr("phantom.cli._terminal._is_dumb_terminal", lambda: False)
+
+
+def test_enable_ansi_returns_true_on_posix(monkeypatch):
+    _isolate(monkeypatch)
+    monkeypatch.setattr("os.name", "posix")
     from phantom.cli._terminal import enable_ansi
     assert enable_ansi() is True
 
 
 def test_enable_ansi_uses_os_system_first_on_windows(monkeypatch):
-    """The cheapest Windows fix is `os.system("")`. v1.1.29 tries it
-    before reaching for ctypes."""
+    """The cheapest Windows fix is `os.system("")`. v1.1.29/30 tries
+    it before reaching for ctypes."""
+    _isolate(monkeypatch)
     monkeypatch.setattr("os.name", "nt")
-    monkeypatch.setattr("phantom.cli._terminal._INITIALIZED", False)
-    monkeypatch.setattr("phantom.cli._terminal._ANSI_OK", False)
+    # Verifier always False so we exercise the full stack and the strip
+    # fallback installs at the end. We just want to confirm os.system
+    # was called.
+    monkeypatch.setattr("phantom.cli._terminal._vt_actually_enabled", lambda: False)
+    monkeypatch.setattr("phantom.cli._terminal._try_colorama", lambda: False)
+    monkeypatch.setattr("phantom.cli._terminal._install_strip_wrapper", lambda: True)
 
     calls = []
     def fake_system(cmd):
@@ -86,14 +100,11 @@ def test_enable_ansi_uses_os_system_first_on_windows(monkeypatch):
 
 
 def test_enable_ansi_falls_back_to_strip_when_everything_fails(monkeypatch):
-    """When all three Windows paths fail, install the strip wrapper so
-    output is at least readable."""
+    """When verifier reports VT off after every attempt and colorama
+    is unavailable, install the strip wrapper."""
+    _isolate(monkeypatch)
     monkeypatch.setattr("os.name", "nt")
-    monkeypatch.setattr("phantom.cli._terminal._INITIALIZED", False)
-    monkeypatch.setattr("phantom.cli._terminal._ANSI_OK", False)
-
-    monkeypatch.setattr("phantom.cli._terminal._try_os_system_trick", lambda: False)
-    monkeypatch.setattr("phantom.cli._terminal._try_setconsolemode", lambda: False)
+    monkeypatch.setattr("phantom.cli._terminal._vt_actually_enabled", lambda: False)
     monkeypatch.setattr("phantom.cli._terminal._try_colorama", lambda: False)
     installed = []
     monkeypatch.setattr("phantom.cli._terminal._install_strip_wrapper",
@@ -101,7 +112,7 @@ def test_enable_ansi_falls_back_to_strip_when_everything_fails(monkeypatch):
 
     from phantom.cli._terminal import enable_ansi
     rc = enable_ansi()
-    assert rc is False  # caller knows colours won't render natively
+    assert rc is False
     assert installed == [True]
 
 

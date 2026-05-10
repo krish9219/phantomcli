@@ -21,80 +21,74 @@ from phantom.cli._terminal import enable_ansi
 
 # ─── enable_ansi ────────────────────────────────────────────────────────────
 
-def test_enable_ansi_returns_true_on_posix(monkeypatch):
-    """POSIX terminals already handle ANSI — function should report
-    success without doing any Win32 calls."""
-    monkeypatch.setattr("os.name", "posix")
-    # Reset the idempotency cache.
+def _isolate_terminal_state(monkeypatch):
+    """Reset module-level state and disable pre-flight checks so the
+    test can drive the Windows strategy path deterministically."""
     monkeypatch.setattr("phantom.cli._terminal._INITIALIZED", False)
+    monkeypatch.setattr("phantom.cli._terminal._ANSI_OK", False)
+    monkeypatch.setattr("phantom.cli._terminal._no_color_requested", lambda: False)
+    monkeypatch.setattr("phantom.cli._terminal._stdout_is_redirected", lambda: False)
+    monkeypatch.setattr("phantom.cli._terminal._is_dumb_terminal", lambda: False)
+
+
+def test_enable_ansi_returns_true_on_posix(monkeypatch):
+    """POSIX terminals with a TTY handle ANSI natively — function
+    should report success without doing any Win32 calls."""
+    _isolate_terminal_state(monkeypatch)
+    monkeypatch.setattr("os.name", "posix")
     assert enable_ansi() is True
 
 
 def test_enable_ansi_is_idempotent(monkeypatch):
     """Calling twice must be safe — no double init, no errors."""
-    monkeypatch.setattr("phantom.cli._terminal._INITIALIZED", False)
+    _isolate_terminal_state(monkeypatch)
     enable_ansi()
     # Second call: already initialised, fast-path.
     assert enable_ansi() is True
 
 
 def test_enable_ansi_calls_setconsolemode_on_windows(monkeypatch):
-    """On Windows, the function should resolve kernel32 + call
-    SetConsoleMode with the VT flag for both stdout and stderr handles."""
-    monkeypatch.setattr("phantom.cli._terminal._INITIALIZED", False)
+    """On Windows, the function should call SetConsoleMode with the
+    VT flag. v1.1.30 adds read-back verification — we mock the
+    verifier to True to exercise the SetConsoleMode-succeeds path."""
+    _isolate_terminal_state(monkeypatch)
     monkeypatch.setattr("os.name", "nt")
-
-    fake_kernel32 = MagicMock()
-    fake_kernel32.GetStdHandle.side_effect = [100, 101]  # 2 distinct handles
-    fake_kernel32.GetConsoleMode.return_value = True
-    fake_kernel32.SetConsoleMode.return_value = True
-
-    fake_ctypes_module = MagicMock()
-    fake_ctypes_module.windll.kernel32 = fake_kernel32
-    fake_ctypes_module.byref = lambda x: x  # passthrough
-    fake_ctypes_module.c_void_p = MagicMock()
-    fake_ctypes_module.c_void_p.return_value.value = -1
-
-    with patch.dict("sys.modules", {"ctypes": fake_ctypes_module,
-                                     "ctypes.wintypes": MagicMock()}):
-        assert enable_ansi() is True
-    # SetConsoleMode called for stdout + stderr.
-    assert fake_kernel32.SetConsoleMode.call_count == 2
-    # Each call ORs in 0x4 (ENABLE_VIRTUAL_TERMINAL_PROCESSING).
-    for call in fake_kernel32.SetConsoleMode.call_args_list:
-        new_mode = call.args[1]
-        assert new_mode & 0x0004
+    # First strategy (os.system trick) won't enable VT in this test,
+    # but the verifier sees True after _try_setconsolemode runs.
+    verify_calls = {"n": 0}
+    def fake_verify():
+        verify_calls["n"] += 1
+        return verify_calls["n"] >= 2  # False on first verify, True on second
+    monkeypatch.setattr("phantom.cli._terminal._vt_actually_enabled", fake_verify)
+    setcm_called = []
+    monkeypatch.setattr("phantom.cli._terminal._try_setconsolemode",
+                        lambda: setcm_called.append(True))
+    assert enable_ansi() is True
+    assert setcm_called == [True]
 
 
 def test_enable_ansi_falls_back_to_colorama_on_kernel32_failure(monkeypatch):
-    """v1.1.29 stacks 4 strategies. If os.system AND SetConsoleMode both
-    fail, colorama is the next attempt. Verify it gets called.
-    """
-    monkeypatch.setattr("phantom.cli._terminal._INITIALIZED", False)
-    monkeypatch.setattr("phantom.cli._terminal._ANSI_OK", False)
+    """When os.system + SetConsoleMode both fail to enable VT (verifier
+    keeps reporting False), colorama is the next attempt."""
+    _isolate_terminal_state(monkeypatch)
     monkeypatch.setattr("os.name", "nt")
-    monkeypatch.setattr("phantom.cli._terminal._try_os_system_trick", lambda: False)
-    monkeypatch.setattr("phantom.cli._terminal._try_setconsolemode", lambda: False)
+    monkeypatch.setattr("phantom.cli._terminal._vt_actually_enabled", lambda: False)
 
     called = []
     def fake_colorama():
         called.append(True)
         return True
     monkeypatch.setattr("phantom.cli._terminal._try_colorama", fake_colorama)
-
     assert enable_ansi() is True
     assert called == [True]
 
 
 def test_enable_ansi_falls_back_to_strip_when_everything_fails(monkeypatch):
-    """v1.1.29: when no native path works, install the strip wrapper
-    so output is monochrome but readable. Returns False so the caller
-    can know native colours won't render."""
-    monkeypatch.setattr("phantom.cli._terminal._INITIALIZED", False)
-    monkeypatch.setattr("phantom.cli._terminal._ANSI_OK", False)
+    """When verifier never returns True and colorama is unavailable,
+    install the strip wrapper so output is monochrome but readable."""
+    _isolate_terminal_state(monkeypatch)
     monkeypatch.setattr("os.name", "nt")
-    monkeypatch.setattr("phantom.cli._terminal._try_os_system_trick", lambda: False)
-    monkeypatch.setattr("phantom.cli._terminal._try_setconsolemode", lambda: False)
+    monkeypatch.setattr("phantom.cli._terminal._vt_actually_enabled", lambda: False)
     monkeypatch.setattr("phantom.cli._terminal._try_colorama", lambda: False)
 
     installed = []
