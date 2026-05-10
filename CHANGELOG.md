@@ -13,6 +13,45 @@ The major version cadence:
 
 ---
 
+## [1.1.35] — 2026-05-10 — Disable streaming on Windows (cursor glitches eat reply chars)
+
+User on v1.1.34 saw the prefix `ghost ›` plus the leading `I'm Ghost`
+of every reply silently vanish on PowerShell 5.1, leaving just the
+trailing portion of the canned identity response visible:
+
+    Arvi Sir › what's your name?
+    ✓ done in 7s
+     — a coding agent that runs on a configurable model.   ← prefix + "I'm Ghost" missing
+
+    Arvi Sir › what model are you?
+    ✓ done in 1s
+    'm Ghost — a coding agent that runs on a configurable model.   ← "I" missing
+
+The chunked `sys.stdout.write` calls in the streaming path
+(`_on_text_chunk` callback) interact poorly with PowerShell 5.1's
+console rendering even with VT mode on. Cursor positioning glitches
+eat the prefix and leading characters as the chunks land.
+
+### Fixed
+
+* **Streaming disabled by default on Windows.** `session.on_text_chunk`
+  is set to `None` when `os.name == "nt"` so the chat REPL falls
+  through to the non-streamed render path
+  (`_render_assistant_reply` → rich markdown → colorama-wrapped
+  stdout). That path is well-tested on Windows and renders cleanly.
+* **`PHANTOM_STREAMING=1` opt-in** for power users on Windows
+  Terminal + PowerShell 7 where streaming actually works.
+
+### Tests
+
+* 4 new in `test_v1_1_35_fixes.py`: streaming-disabled-on-Windows
+  source check, comment documentation regression net, env-var
+  opt-in honoured, both branches set `_phantom_stream_state` (so
+  per-turn reset still works in the non-streamed branch).
+* Suite: 2624 passed, 8 skipped, 0 failed.
+
+---
+
 ## [1.1.34] — 2026-05-10 — Replies were being erased by double spinner stop
 
 User on v1.1.33 saw `✓ done in 3s` and `✓ done in 4s` appear twice

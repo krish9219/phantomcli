@@ -2063,6 +2063,19 @@ def chat(
     # threshold is bumped to 1024 so the model usually hits a sentence
     # boundary first; the buffer cap exists only so a long bullet list
     # without periods doesn't grow unbounded.
+    #
+    # v1.1.35: streaming is disabled by default on Windows — chunked
+    # writes via sys.stdout.write interact badly with the PowerShell
+    # console rendering even with VT mode on (cursor positioning glitches
+    # eat the prefix and leading characters of the reply, as reported in
+    # the v1.1.34 user transcript). The non-streamed path (
+    # _render_assistant_reply via rich markdown, routed through colorama
+    # on Windows) is well-tested and renders cleanly. Set
+    # PHANTOM_STREAMING=1 to force streaming on Windows anyway.
+    _streaming_enabled = (
+        os.name != "nt"
+        or os.environ.get("PHANTOM_STREAMING") == "1"
+    )
     STREAM_LOOKBACK = 192
     STREAM_FLUSH_AT = 1024
     _stream_state = {"started": False, "spinner": None, "buffer": ""}
@@ -2092,8 +2105,12 @@ def chat(
             sys.stdout.write(cleaned)
             _stream_state["buffer"] = ""
             sys.stdout.flush()
-    session.on_text_chunk = _on_text_chunk
-    session._phantom_stream_state = _stream_state  # so run_repl can reset it per turn
+    if _streaming_enabled:
+        session.on_text_chunk = _on_text_chunk
+        session._phantom_stream_state = _stream_state  # so run_repl can reset it per turn
+    else:
+        session.on_text_chunk = None
+        session._phantom_stream_state = _stream_state
 
     # /confirm — gate destructive tool calls behind a y/n prompt.
     if profile.confirm_destructive:
