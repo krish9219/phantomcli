@@ -166,6 +166,7 @@ class Provider(Protocol):
         messages: list[ProviderMessage],
         *,
         tools: list[dict[str, Any]],
+        on_chunk: Any = None,  # Callable[[str], None] | None
     ) -> ProviderResponse: ...
 
 
@@ -192,11 +193,20 @@ class ScriptedProvider:
         messages: list[ProviderMessage],
         *,
         tools: list[dict[str, Any]],
+        on_chunk: Any = None,
     ) -> ProviderResponse:
         self.received.append(list(messages))
         if not self._responses:
             raise PhantomError("ScriptedProvider exhausted")
-        return self._responses.pop(0)
+        response = self._responses.pop(0)
+        # Tests that pass on_chunk get a single chunk callback with
+        # the full text — keeps streaming-aware code paths exercised.
+        if on_chunk is not None and response.text:
+            try:
+                on_chunk(response.text)
+            except Exception:
+                pass
+        return response
 
 
 # ─── OpenAICompatibleProvider ────────────────────────────────────────────────
@@ -255,22 +265,24 @@ class OpenAICompatibleProvider:
         messages: list[ProviderMessage],
         *,
         tools: list[dict[str, Any]],
+        on_chunk: Any = None,
     ) -> ProviderResponse:
         send_tools = bool(tools) and self._tools_supported
         try:
-            return self._post_chat(messages, tools if send_tools else [])
+            return self._post_chat(messages, tools if send_tools else [], on_chunk=on_chunk)
         except _ToolsNotSupported as e:
             self._tools_supported = False
             self._notify(
                 f"  ⚠ provider {self.name!r} doesn't accept tools "
                 f"(model {self._model!r}); falling back to chat-only mode."
             )
-            return self._post_chat(messages, [])
+            return self._post_chat(messages, [], on_chunk=on_chunk)
 
     def _post_chat(
         self,
         messages: list[ProviderMessage],
         tools: list[dict[str, Any]],
+        on_chunk: Any = None,
     ) -> ProviderResponse:
         # When tools are off, scrub the orphaned residue of prior
         # tool-call rounds: any role="tool" message, and any empty
@@ -298,6 +310,16 @@ class OpenAICompatibleProvider:
             headers["Authorization"] = f"Bearer {self._api_key}"
 
         url = f"{self._base_url}/chat/completions"
+
+        # ─── streaming branch ────────────────────────────────────────────────
+        # When the caller passed an on_chunk callback, request the server-
+        # sent-events stream and dispatch text deltas live. Tool-call deltas
+        # are accumulated and surfaced once the stream completes. This is
+        # the path the chat REPL uses for token-by-token output.
+        if on_chunk is not None:
+            payload["stream"] = True
+            return self._stream_chat(url, headers, payload, tools, on_chunk)
+
         # 429 retry with backoff. NVIDIA's free tier throttles aggressively
         # in chat sessions; one short retry recovers ~half the cases.
         attempts = 2
@@ -355,6 +377,146 @@ class OpenAICompatibleProvider:
             )
         data = response.json()
         return self._parse(data)
+
+    def _stream_chat(
+        self,
+        url: str,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+        tools: list[dict[str, Any]],
+        on_chunk: Any,
+    ) -> ProviderResponse:
+        """SSE-stream the chat completion and dispatch text deltas live.
+
+        Returns a final ProviderResponse with the full text + any
+        tool calls that arrived. Calls ``on_chunk(text)`` for each
+        text-content delta. Tool-call args are accumulated string
+        fragments and parsed once the stream closes.
+
+        Falls back to non-streaming (recursive call without on_chunk)
+        if the server rejects ``stream=true``.
+        """
+        client = self._http()
+        accumulated_text: list[str] = []
+        # tool_calls indexed by `index` (the position in the parallel-call
+        # list). Each value collects {id, name, arguments_str}.
+        tool_call_state: dict[int, dict[str, str]] = {}
+        finish_reason = "stop"
+
+        try:
+            with client.stream("POST", url, headers=headers, json=payload) as resp:
+                if resp.status_code == 429:
+                    # 429 during stream-open — let the non-streaming path
+                    # handle the retry. Read the body so the connection
+                    # closes cleanly.
+                    try:
+                        resp.read()
+                    except Exception:
+                        pass
+                    raise PhantomError(
+                        f"provider {self.name!r} rate-limited (429) on "
+                        f"{self._model!r}. Wait ~30s or switch model."
+                    )
+                if resp.status_code >= 400:
+                    body = b"".join(resp.iter_bytes(8192))[:300].decode("utf-8", "replace")
+                    if (
+                        tools
+                        and resp.status_code in (400, 422, 500, 502, 503)
+                        and _looks_like_tool_rejection(body)
+                    ):
+                        raise _ToolsNotSupported(body)
+                    raise PhantomError(
+                        f"provider {self.name!r} returned {resp.status_code}: {body}"
+                    )
+
+                for raw_line in resp.iter_lines():
+                    if not raw_line:
+                        continue
+                    line = raw_line if isinstance(raw_line, str) else raw_line.decode("utf-8", "replace")
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    if not data:
+                        continue
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+
+                    choices = chunk.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = (choices[0].get("delta") or {})
+
+                    # Text content delta
+                    text_piece = delta.get("content") or ""
+                    if text_piece:
+                        accumulated_text.append(text_piece)
+                        try:
+                            on_chunk(text_piece)
+                        except Exception:
+                            pass
+
+                    # Tool-call deltas (accumulated by index)
+                    for tc_delta in delta.get("tool_calls") or []:
+                        idx = tc_delta.get("index", 0)
+                        slot = tool_call_state.setdefault(idx, {"id": "", "name": "", "arguments": ""})
+                        if tc_delta.get("id"):
+                            slot["id"] = tc_delta["id"]
+                        fn = tc_delta.get("function") or {}
+                        if fn.get("name"):
+                            slot["name"] = fn["name"]
+                        if fn.get("arguments"):
+                            slot["arguments"] += fn["arguments"]
+
+                    if choices[0].get("finish_reason"):
+                        finish_reason = choices[0]["finish_reason"]
+        except _ToolsNotSupported:
+            raise
+        except PhantomError:
+            raise
+        except Exception as exc:
+            cls = type(exc).__name__
+            if "Timeout" in cls or "timeout" in str(exc).lower():
+                raise PhantomError(
+                    f"provider {self.name!r} stream timed out after "
+                    f"{self._timeout:.0f}s (model={self._model!r}). "
+                    f"Try /model meta/llama-3.3-70b-instruct or raise "
+                    f"PHANTOM_HTTP_TIMEOUT_S."
+                ) from exc
+            raise PhantomError(f"provider {self.name!r} stream failed: {exc}") from exc
+
+        # Build the final ProviderResponse from accumulated state.
+        full_text = "".join(accumulated_text)
+        calls: list[ToolCall] = []
+        for idx in sorted(tool_call_state.keys()):
+            slot = tool_call_state[idx]
+            try:
+                args = json.loads(slot["arguments"]) if slot["arguments"].strip() else {}
+            except json.JSONDecodeError:
+                args = {}
+            calls.append(ToolCall(
+                id=slot["id"] or f"stream-{idx}",
+                name=slot["name"] or "",
+                arguments=args,
+            ))
+
+        # Same inline-tool-call extraction as the non-streaming path:
+        # some models emit kimi-style markers in the text content even
+        # when streaming.
+        if not calls:
+            extracted, cleaned_text = _extract_inline_tool_calls(full_text)
+            if extracted:
+                calls.extend(extracted)
+                full_text = cleaned_text
+
+        return ProviderResponse(
+            text=full_text,
+            tool_calls=tuple(calls),
+            finish_reason=finish_reason,
+        )
 
     def set_tools_warning_sink(self, fn: Any) -> None:
         """Register a callable(str) the provider calls when it disables tools.

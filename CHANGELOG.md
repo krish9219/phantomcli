@@ -13,6 +13,48 @@ The major version cadence:
 
 ---
 
+## [1.1.27] — 2026-05-10 — Streaming responses + interactive `/confirm` gate
+
+The two items I deferred in v1.1.26 are now in.
+
+### Added
+
+* **Streaming text responses.** `Provider.complete()` accepts an
+  `on_chunk: Callable[[str], None]` kwarg. When set, the provider
+  sends `stream=True`, parses SSE deltas, and dispatches each text
+  fragment to the callback. Tool calls accumulate across chunks
+  (`function.arguments` is a string fragment per delta — provider
+  reassembles by `index`). The chat REPL stops the spinner on first
+  chunk and prints text inline so you see tokens as they arrive.
+* **`/confirm [on|off]`** slash command. Toggles a y/n prompt before
+  destructive tool calls (`write_file`, `edit_file`, `run_bash`,
+  `start_server`). Persisted to `profile.json`. Works via a new
+  `AgentSession.on_tool_call_approve(round, tc) -> bool` hook —
+  decline returns a `{"error": "user declined"}` JSON to the model
+  so it knows to try a different approach instead of looping.
+* **Pre-execution preview** when `/confirm on`:
+  - `edit_file`: shows the old/new strings as a red/green diff (8 lines each).
+  - `write_file`: shows path + line count + first 8 lines of new content.
+  - `run_bash`: shows the command (300 chars).
+  - `start_server`: shows command + port.
+  Three answers: `y` (proceed), `n` (decline), `always-off` (proceed
+  AND disable confirm mode for this and future sessions).
+
+### Tests
+
+* 13 new in `phantom/tests/test_v1_1_27_fixes.py`: streaming SSE
+  chunk dispatch ordering, tool_calls accumulated across chunks
+  (id+name first, args fragmented), empty-line + `[DONE]` handling,
+  malformed-SSE skipping, callback-exception isolation, non-streaming
+  path preserved when no `on_chunk` passed, approval hook proceeds
+  on True, approval declined returns user-declined marker, hook
+  exception fail-open, profile persists `confirm_destructive`,
+  `/confirm on` / `off` toggle, status report, `/help` lists
+  `/confirm`.
+* Suite: 2535 passed, 0 failed.
+
+---
+
 ## [1.1.26] — 2026-05-10 — TUI polish: tool icons, diff preview, markdown reply, expanded read-allowlist
 
 Patch release. Closes the gaps from the v1.1.25 self-rating: read

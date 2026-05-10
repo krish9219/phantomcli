@@ -47,6 +47,7 @@ class Profile:
     coder_provider: str = ""      # registered provider name for the coder
     executor_provider: str = ""   # registered provider name for the executor
     dual_mode: bool = False       # toggled by /dual on|off
+    confirm_destructive: bool = False  # /confirm on|off — y/n gate before tool exec
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Profile":
@@ -58,7 +59,7 @@ class Profile:
             v = data.get(f)
             if isinstance(v, str):
                 setattr(out, f, v)
-        for f in ("god_mode", "dual_mode"):
+        for f in ("god_mode", "dual_mode", "confirm_destructive"):
             if isinstance(data.get(f), bool):
                 setattr(out, f, data[f])
         return out

@@ -66,6 +66,7 @@ SLASH_COMMANDS = {
     "/dashboard",
     "/plugins",
     "/telegram",
+    "/confirm",
 }
 
 
@@ -288,6 +289,65 @@ def _format_tool_result_preview(name: str, result_str: str) -> str:
     return ""
 
 
+def _prompt_user_approval(tc, write: Callable[[str], None]) -> bool:
+    """Prompt y/n before a destructive tool runs. Returns True to proceed.
+
+    Shows what the tool is about to do (the diff for edit_file, the
+    command for run_bash, the path + first 200 chars for write_file)
+    so the user can make an informed call without leaving chat.
+    """
+    YELLOW = "\033[33m"; CYAN = "\033[36m"; DIM = "\033[2m"
+    GREEN = "\033[32m"; RED = "\033[31m"; RESET = "\033[0m"
+
+    write(f"\n  {YELLOW}⚠ confirm{RESET} {CYAN}{tc.name}{RESET}\n")
+    args = tc.arguments or {}
+
+    if tc.name == "run_bash":
+        cmd = str(args.get("command", ""))[:300]
+        write(f"      {DIM}command:{RESET} {cmd}\n")
+    elif tc.name == "edit_file":
+        path = args.get("path", "")
+        old = str(args.get("old_string", ""))[:200]
+        new = str(args.get("new_string", ""))[:200]
+        write(f"      {DIM}path:{RESET} {path}\n")
+        for line in old.splitlines()[:8]:
+            write(f"      {RED}- {line}{RESET}\n")
+        for line in new.splitlines()[:8]:
+            write(f"      {GREEN}+ {line}{RESET}\n")
+    elif tc.name == "write_file":
+        path = args.get("path", "")
+        text = str(args.get("text", ""))
+        n_lines = text.count("\n") + 1
+        preview = "\n".join(text.splitlines()[:8])
+        write(f"      {DIM}path:{RESET} {path}\n")
+        write(f"      {DIM}{n_lines} lines, {len(text)} chars. preview:{RESET}\n")
+        for line in preview.splitlines():
+            write(f"      {DIM}│{RESET} {line}\n")
+    elif tc.name == "start_server":
+        cmd = str(args.get("command", ""))[:200]
+        port = args.get("port", "auto")
+        write(f"      {DIM}command:{RESET} {cmd}\n")
+        write(f"      {DIM}port:{RESET}    {port}\n")
+
+    try:
+        ans = input(f"  {DIM}proceed?{RESET} [{GREEN}Y{RESET}/n/always-off]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        write(f"  {DIM}declined.{RESET}\n")
+        return False
+
+    if ans in ("n", "no"):
+        write(f"  {DIM}declined — telling the model to try a different approach.{RESET}\n")
+        return False
+    if ans in ("always-off", "always off", "off"):
+        from phantom.profile import load_profile, save_profile
+        p = load_profile()
+        p.confirm_destructive = False
+        save_profile(p)
+        write(f"  {DIM}confirmation mode disabled for this and future sessions.{RESET}\n")
+        return True
+    return True
+
+
 def _render_assistant_reply(text: str, write: Callable[[str], None] | None = None) -> None:
     """Render the agent's reply with rich markdown when available.
 
@@ -499,6 +559,7 @@ def _handle_slash(
         write(f"  {CYAN}/system{RESET} {DIM}— show host snapshot (os, ram, disk){RESET}\n")
         write(f"  {CYAN}/memory [query]{RESET} {DIM}— show stored memory; with query, search{RESET}\n")
         write(f"  {CYAN}/god-mode [on|off]{RESET} {DIM}— autonomous mode (default off){RESET}\n")
+        write(f"  {CYAN}/confirm [on|off]{RESET} {DIM}— y/n gate before destructive tools{RESET}\n")
         write(f"  {DIM}── licence ──{RESET}\n")
         write(f"  {CYAN}/license{RESET} {DIM}— show current tier{RESET}\n")
         write(f"  {CYAN}/buy{RESET} {DIM}— Pro lifetime licence (₹999, 3 devices){RESET}\n")
@@ -741,6 +802,9 @@ def _handle_slash(
     if head == "/telegram":
         return _handle_telegram(write)
 
+    if head == "/confirm":
+        return _handle_confirm(arg, write)
+
     if head == "/dual":
         from phantom.profile import load_profile, save_profile
         profile = load_profile()
@@ -884,6 +948,32 @@ def _handle_doctor(write: Callable[[str], None]) -> bool:
         write(f"    {mark} {name}\n")
     if report.get("selected") is None:
         write(f"  {YELLOW}no sandbox backend available — running in passthrough mode (no isolation){RESET}\n")
+    return True
+
+
+def _handle_confirm(arg: str, write: Callable[[str], None]) -> bool:
+    """Toggle the destructive-tool confirmation gate. When on, the chat
+    REPL prompts y/n before write_file / edit_file / run_bash / start_server
+    so the user can review the diff or command first."""
+    DIM = "\033[2m"; CYAN = "\033[36m"; GREEN = "\033[32m"; RESET = "\033[0m"
+    from phantom.profile import load_profile, save_profile
+    profile = load_profile()
+    flag = arg.strip().lower()
+    if flag in ("on", "1", "true", "yes"):
+        profile.confirm_destructive = True
+        save_profile(profile)
+        write(f"{GREEN}✓{RESET} confirmation mode {DIM}on{RESET} — "
+              f"you'll review write_file / edit_file / run_bash / start_server "
+              f"calls before they execute.\n")
+    elif flag in ("off", "0", "false", "no"):
+        profile.confirm_destructive = False
+        save_profile(profile)
+        write(f"{GREEN}✓{RESET} confirmation mode {DIM}off{RESET}\n")
+    else:
+        cur = "on" if profile.confirm_destructive else "off"
+        write(f"  confirmation mode: {CYAN}{cur}{RESET}  "
+              f"({DIM}/confirm on{RESET} or {DIM}/confirm off{RESET})\n")
+        write(f"  {DIM}when on, prompts y/n before destructive tool calls.{RESET}\n")
     return True
 
 
@@ -1461,8 +1551,16 @@ def run_repl(
                 continue
             # Unhandled slash falls through to LLM. Shouldn't normally happen.
 
+        # Reset per-turn streaming state (so each new user prompt starts
+        # fresh — chunks from the previous turn don't bleed into the next).
+        _ss = getattr(session, "_phantom_stream_state", None)
+        if _ss is not None:
+            _ss["started"] = False
+
         spinner = PhantomSpinner()
         spinner.start()
+        if _ss is not None:
+            _ss["spinner"] = spinner
 
         # Dual-model: pre-stage the user's prompt with a coder pass.
         try:
@@ -1524,12 +1622,19 @@ def run_repl(
         if prior_system_prompt is not None:
             session.system_prompt = prior_system_prompt
         reply = _strip_thinking_tags(reply)
-        # Render assistant reply with rich markdown (code blocks get
-        # syntax highlighting, lists indent, tables align, **bold**
-        # works). Falls back to plain text on non-TTY or when rich
-        # isn't available.
-        write(f"{GREEN}{assistant_label} ›{RESET} ")
-        _render_assistant_reply(reply, write=write)
+        # If streaming already pushed text live, finish the line and
+        # skip the markdown re-render — re-printing the same text twice
+        # would be jarring. The streamed output is plain (not markdown-
+        # rendered), which is the standard tradeoff for live token output.
+        streamed = bool(_ss and _ss.get("started"))
+        if streamed:
+            write("\n\n")
+        else:
+            # Non-streamed turn (provider didn't support stream, or
+            # text-less tool-only round): render the final reply with
+            # markdown the same way we did before.
+            write(f"{GREEN}{assistant_label} ›{RESET} ")
+            _render_assistant_reply(reply, write=write)
         if _looks_garbled(reply):
             current_model = getattr(session.provider, "_model", "")
             write(
@@ -1720,6 +1825,34 @@ def chat(
 
     session.on_tool_call = _tool_call_printer
     session.on_tool_result = _tool_result_printer
+
+    # Stream tokens live as the model produces them. Stops the spinner
+    # on first chunk, prints text inline, restarts a new line on tool
+    # calls.
+    _stream_state = {"started": False, "spinner": None}
+    def _on_text_chunk(chunk: str):
+        if not _stream_state["started"]:
+            _stream_state["started"] = True
+            sp = _stream_state.get("spinner")
+            if sp is not None:
+                try:
+                    sp.stop()
+                except Exception:
+                    pass
+            sys.stdout.write(f"\r\033[K{GREEN}{profile.assistant_name.lower() or 'phantom'} ›{RESET} ")
+        sys.stdout.write(chunk)
+        sys.stdout.flush()
+    session.on_text_chunk = _on_text_chunk
+    session._phantom_stream_state = _stream_state  # so run_repl can reset it per turn
+
+    # /confirm — gate destructive tool calls behind a y/n prompt.
+    if profile.confirm_destructive:
+        DESTRUCTIVE = {"write_file", "edit_file", "run_bash", "start_server"}
+        def _on_approve(_round_idx, tc):
+            if tc.name not in DESTRUCTIVE:
+                return True
+            return _prompt_user_approval(tc, sys.stdout.write)
+        session.on_tool_call_approve = _on_approve
 
     # Tell run_repl not to print its own greeting; the boot banner did.
     session._phantom_already_greeted = True

@@ -221,6 +221,17 @@ class AgentSession:
     on_tool_result:
         Optional callable ``(round_idx, tool_call, result_str) -> None``
         invoked after each tool returns. Symmetric with on_tool_call.
+    on_text_chunk:
+        Optional callable ``(chunk: str) -> None`` invoked once per text
+        delta when the provider streams. The chat REPL prints chunks
+        live so the user sees tokens as they arrive instead of waiting
+        for the full response.
+    on_tool_call_approve:
+        Optional callable ``(round_idx, tool_call) -> bool``. If set
+        and returns False, the tool is NOT executed; instead the agent
+        loop records a "user declined" result and lets the model react.
+        The chat REPL wires this for /confirm mode (interactive y/n
+        before destructive operations).
     """
 
     provider: Provider
@@ -231,6 +242,8 @@ class AgentSession:
     wall_clock_budget_s: float = 300.0
     on_tool_call: Callable[[int, "ToolCall"], None] | None = None
     on_tool_result: Callable[[int, "ToolCall", str], None] | None = None
+    on_text_chunk: Callable[[str], None] | None = None
+    on_tool_call_approve: Callable[[int, "ToolCall"], bool] | None = None
 
     def __post_init__(self) -> None:
         names = [t.name for t in self.tools]
@@ -339,6 +352,36 @@ class AgentSession:
                         self.on_tool_call(round_idx, tc)
                     except Exception:
                         pass
+                # Approval gate: when /confirm is on, prompt the user
+                # before destructive ops. Decline → tool result becomes
+                # a clear error the model can react to.
+                if self.on_tool_call_approve is not None:
+                    try:
+                        approved = self.on_tool_call_approve(round_idx, tc)
+                    except Exception:
+                        approved = True  # never block on a hook error
+                    if not approved:
+                        tool_result = json.dumps({
+                            "error": "user declined this action",
+                            "hint": (
+                                "The user reviewed the proposed tool call "
+                                "and declined. Do not retry the same call. "
+                                "Either ask the user what they'd prefer, "
+                                "or move on to a different approach."
+                            ),
+                        })
+                        if self.on_tool_result is not None:
+                            try:
+                                self.on_tool_result(round_idx, tc, tool_result)
+                            except Exception:
+                                pass
+                        self.history.append(ProviderMessage(
+                            role="tool",
+                            content=tool_result,
+                            tool_call_id=tc.id,
+                            name=tc.name,
+                        ))
+                        continue
                 tool_result = self._invoke_tool(tc)
                 if self.on_tool_result is not None:
                     try:
@@ -389,7 +432,13 @@ class AgentSession:
                     break
         tools_payload = [t.to_provider_dict() for t in self.tools]
         try:
-            return self.provider.complete(messages, tools=tools_payload)
+            # Use streaming when the chat REPL has registered an on_text_chunk
+            # callback. The provider returns the same ProviderResponse shape
+            # in both modes; streaming just dispatches text deltas live.
+            kwargs: dict[str, Any] = {"tools": tools_payload}
+            if self.on_text_chunk is not None:
+                kwargs["on_chunk"] = self.on_text_chunk
+            return self.provider.complete(messages, **kwargs)
         except PhantomError:
             raise
         except Exception as exc:
