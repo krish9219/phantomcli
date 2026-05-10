@@ -367,10 +367,13 @@ class OpenAICompatibleProvider:
                 raise _ToolsNotSupported(body)
             if response.status_code == 429:
                 raise PhantomError(
-                    f"provider {self.name!r} rate-limited (429) on {self._model!r} "
-                    f"after a retry. NVIDIA's free tier throttles bursty traffic — "
-                    f"wait ~30 seconds, or switch to a less-loaded model with "
-                    f"/model meta/llama-3.3-70b-instruct."
+                    f"provider {self.name!r} rate-limited (429) on "
+                    f"{self._model!r} after a retry. Free-tier providers "
+                    f"throttle bursty traffic — wait ~30 seconds, or "
+                    f"switch model now: "
+                    f"`/model meta/llama-3.3-70b-instruct` (NVIDIA free), "
+                    f"`/model claude-haiku-4-5` (paid, fast), or "
+                    f"`/model anthropic/claude-sonnet-4-5` (paid, capable)."
                 )
             raise PhantomError(
                 f"provider {self.name!r} returned {response.status_code}: {body}"
@@ -415,7 +418,10 @@ class OpenAICompatibleProvider:
                         pass
                     raise PhantomError(
                         f"provider {self.name!r} rate-limited (429) on "
-                        f"{self._model!r}. Wait ~30s or switch model."
+                        f"{self._model!r}. Wait ~30s, or switch model now: "
+                        f"`/model meta/llama-3.3-70b-instruct` (NVIDIA free), "
+                        f"`/model claude-haiku-4-5` (paid, fast), or "
+                        f"`/model anthropic/claude-sonnet-4-5` (paid, capable)."
                     )
                 if resp.status_code >= 400:
                     body = b"".join(resp.iter_bytes(8192))[:300].decode("utf-8", "replace")

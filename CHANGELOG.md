@@ -13,6 +13,80 @@ The major version cadence:
 
 ---
 
+## [1.1.32] — 2026-05-10 — Robustness pass after the v1.1.28→v1.1.31 saga
+
+The v1.1.28→v1.1.31 arc exposed a handful of process and UX gaps that
+weren't bugs per se but cost real time. v1.1.32 closes them.
+
+### Fixed
+
+* **Orphan-install detection in `phantom update`** — when pip has no
+  record of `phantom-cli` (the install was from a stale install.ps1
+  run, a deleted venv, or manual zip extraction) the zip-extract update
+  path can write to the wrong directory, while PATH keeps resolving
+  to the old executable. v1.1.32 detects this case via
+  `pip show phantom-cli` and bails with a concrete copy-pasteable
+  `pip install --upgrade --force-reinstall <zip>` command instead
+  of silently failing. Returns exit 2.
+* **Identity post-filter heuristic catch-all** — the static brand
+  list was the only defence against novel model-leak strings. v1.1.32
+  adds an anchored heuristic: `I am [Capitalised non-name]` at the
+  head of a reply gets rewritten to `I'm <assistant_name>`, even if
+  the brand isn't in the static list. Skips the rewrite when the
+  captured token equals `assistant_name` (no churn) and only applies
+  to the first 250 chars of a reply (no false positives in body text).
+* **429 rate-limit error suggests concrete switches** — both the
+  streaming and retry-exhausted error paths now name three specific
+  models the user can `/model` to: NVIDIA's free
+  `meta/llama-3.3-70b-instruct`, paid `claude-haiku-4-5`, paid
+  `anthropic/claude-sonnet-4-5`. v1.1.31's "wait or switch" was a
+  dead-end message.
+
+### CI flakes addressed
+
+* **Import-discipline budget** — bumped `phantom.cli` cold-import cap
+  500 → 1000 ms. Local floor is 150 ms; Windows CI runners legitimately
+  hit 500-700 ms cold and the suite was redding out. New regression
+  catches if import time goes above 1000 ms.
+* **`start_server` immediate-crash test** — log file appeared empty on
+  Windows CI. Fixed in production: open log with `buffering=0` and
+  close the parent's fd after Popen so any lingering buffer state
+  releases before the test reads. Test also tolerates Windows
+  shell=True path-quoting failures.
+* **`run_bash` server-hint timeout test** — was failing on Linux
+  docker-tier with "permission denied" on `tmp_path/fake_server.py`.
+  Test now `chmod 0o755`'s tmp_path and `0o644`'s the script so the
+  sandbox container can read it.
+* **`doctor --chat` smoke test** — skips on Windows CI when stdout
+  isn't a TTY, since prompt_toolkit can't attach without a real
+  console screen buffer there.
+
+### Installers
+
+* `install.ps1` and `install.sh` no longer hardcode `Phantom v1.0.0`.
+  Both pull the version from `version.json` at install time and
+  fall back to `latest` if the manifest is unreachable. Banner stays
+  in sync without a script edit on every release.
+
+### Refactor
+
+* `_build_prompt_label(user_label)` extracted from inline closure to
+  module-level helper. Now unit-testable: the v1.1.31 source-inspection
+  test is replaced with a behavioural one that asserts the return value
+  is a `prompt_toolkit.formatted_text.ANSI` instance, plus a
+  fallback-to-plain-string test for environments without prompt_toolkit.
+* `is_pip_managed()` and `_orphan_install_hint()` added to
+  `phantom/cli/update_cmd.py`.
+
+### Tests
+
+* 15 new in `test_v1_1_32_fixes.py` covering all the above (orphan
+  detection, identity heuristic, ANSI wrap behaviour, 429 message
+  contract, import budget acknowledgement).
+* Suite: 2605 passed, 8 skipped, 0 failed.
+
+---
+
 ## [1.1.31] — 2026-05-10 — The REAL Windows `^[[36m` fix (prompt_toolkit ANSI wrap)
 
 User on PowerShell 5.x reported v1.1.30 still showed literal `^[[36m`

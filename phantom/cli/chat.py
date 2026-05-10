@@ -133,6 +133,19 @@ _BRAND_LEAK_PATTERNS = (
 )
 
 
+# v1.1.32 heuristic catch-all: at the start of a reply, if the model
+# says "I am Foo" / "I'm Foo" where Foo is a Capitalized non-name token
+# that ISN'T the user's chosen assistant_name, rewrite it. This catches
+# novel brand leaks (next month's open-weights model that says "I am
+# Z-AI") without us having to keep updating the static brand list.
+#
+# Anchored to the first ~250 chars of the reply because identity claims
+# almost always lead the response. We don't sweep the whole reply or
+# we'd mangle legitimate uses like "Hi, I'm John, the user you're
+# chatting with" — though that's vanishingly unlikely from a model.
+_HEURISTIC_IDENTITY_RE = None  # compiled lazily
+
+
 def _post_process_identity(text: str, assistant_name: str) -> str:
     """Replace any leaked foreign-model identity strings with the user's
     chosen assistant name. Best-effort — the system-prompt anchor is
@@ -145,6 +158,27 @@ def _post_process_identity(text: str, assistant_name: str) -> str:
     for pattern, replacement in _BRAND_LEAK_PATTERNS:
         replacement_filled = replacement.replace("{name}", name)
         out = _re.sub(pattern, replacement_filled, out, flags=_re.IGNORECASE)
+
+    # Heuristic catch-all for novel brands. Only applied to the head
+    # of the reply (first 250 chars) to avoid false positives in body
+    # text. Skipped when the captured name equals assistant_name —
+    # that would replace "I'm Ghost" → "I'm Ghost" (a no-op churn).
+    global _HEURISTIC_IDENTITY_RE
+    if _HEURISTIC_IDENTITY_RE is None:
+        _HEURISTIC_IDENTITY_RE = _re.compile(
+            r"\b(I am|I'?m|This is)\s+([A-Z][\w-]{1,30})"
+        )
+    head_len = min(len(out), 250)
+    head = out[:head_len]
+    rest = out[head_len:]
+    def _maybe_rewrite(m):
+        captured = m.group(2)
+        if captured.lower() == name.lower():
+            return m.group(0)  # legitimate self-identification, leave alone
+        return f"I'm {name}"
+    head = _HEURISTIC_IDENTITY_RE.sub(_maybe_rewrite, head)
+    out = head + rest
+
     # Squash double spaces / orphan trailing punctuation introduced by
     # the substitutions.
     out = _re.sub(r"  +", " ", out)
@@ -338,6 +372,26 @@ def _format_tool_result_preview(name: str, result_str: str) -> str:
 # `out` accepts any object with `.write(str)` and `.flush()` — defaults to
 # stdout. Tests pass StringIO / MagicMock to capture exactly what was
 # emitted, which is how the spinner-continuity contract is verified.
+
+def _build_prompt_label(user_label: str) -> Any:
+    """Return the prompt-toolkit-friendly prompt label for the chat REPL.
+
+    Wrapped in ``prompt_toolkit.formatted_text.ANSI`` so prompt_toolkit's
+    renderer interprets the embedded ``\\033[36m`` codes instead of
+    emitting them as literal text. Falls back to a plain string if
+    prompt_toolkit isn't available (test environments, doctor smoke
+    test on headless CI).
+
+    Extracted to module level in v1.1.32 so the contract is unit-testable
+    without spinning up a full PromptSession."""
+    try:
+        from prompt_toolkit.formatted_text import ANSI
+        CYAN = "\033[36m"
+        RESET = "\033[0m"
+        return ANSI(f"\n{CYAN}{user_label} ›{RESET} ")
+    except Exception:
+        return f"\n{user_label} > "
+
 
 def _emit_tool_call_line(name: str, args: dict[str, Any], out: Any = None) -> None:
     """Print one tool-call line over the spinner. Always starts with
@@ -1548,19 +1602,13 @@ def run_repl(
                 # where multiline-mode repaints clobbered the label
                 # printed before read_line).
                 #
-                # CRITICAL (v1.1.31): prompt_toolkit treats a plain string
-                # passed to .prompt() as LITERAL text — `\033[36m` becomes
-                # `^[[36m` on screen, regardless of whether the host
-                # terminal supports VT (this is the bug v1.1.30 didn't
-                # catch because enable_ansi() succeeded for stdout but
-                # prompt_toolkit has its own rendering pipeline). Wrapping
-                # in ``ANSI`` tells prompt_toolkit to interpret the codes.
+                # _build_prompt_label is the module-level helper; it
+                # wraps in prompt_toolkit.formatted_text.ANSI so the
+                # embedded \033[36m codes get interpreted instead of
+                # rendered as literal ^[[36m. v1.1.32 extracted it
+                # from this closure for testability.
                 CYAN = "\033[36m"; RESET = "\033[0m"
-                def _build_prompt_label():
-                    try:
-                        return ANSI(f"\n{CYAN}{user_label} ›{RESET} ")
-                    except Exception:
-                        return f"\n{user_label} > "
+                _ptk_label = lambda: _build_prompt_label(user_label)
 
                 # Paste placeholder state — Claude Code style.
                 # When a multi-line clipboard paste lands, prompt_toolkit
@@ -1578,7 +1626,7 @@ def run_repl(
 
                 def _read():
                     try:
-                        text = _chat_session.prompt(_build_prompt_label())
+                        text = _chat_session.prompt(_ptk_label())
                     except (EOFError, KeyboardInterrupt):
                         return ""
                     if text and text.count("\n") >= 2:

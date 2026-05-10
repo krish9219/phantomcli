@@ -116,6 +116,50 @@ def find_install_dir() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
+def is_pip_managed() -> bool:
+    """True iff ``pip show phantom-cli`` finds a registered package.
+
+    When False but the user can still run ``phantom``, they have an
+    "orphan install" — files on disk and a ``phantom`` shim on PATH,
+    but no pip metadata. Zip-extract updates land in the package
+    directory, but on Windows the entry-point script in ``Scripts/``
+    won't be refreshed and PATH may resolve to a different copy
+    entirely. Better to bail with a clear hint than silently update
+    the wrong thing.
+    """
+    import subprocess
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "pip", "show", "phantom-cli"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        # Pip not available or hung — assume not pip-managed and let
+        # the standard zip-extract path try.
+        return False
+    return proc.returncode == 0 and "Name:" in proc.stdout
+
+
+def _orphan_install_hint(zip_url: str) -> str:
+    """The block of advice we print when the user runs `phantom update`
+    on an orphan install. Concrete, copy-pasteable commands."""
+    py = sys.executable
+    return (
+        "  ! orphan install detected\n"
+        "    Pip has no record of phantom-cli, but `phantom` is on your\n"
+        "    PATH. A zip-extract update will land in the package dir but\n"
+        "    PATH may keep resolving to the old executable, so the\n"
+        "    update would silently not take effect.\n\n"
+        "    Reinstall fresh via pip — this registers phantom-cli with\n"
+        "    pip and replaces the entry-point script:\n\n"
+        f"      {py} -m pip install --upgrade --force-reinstall \\\n"
+        f"          {zip_url}\n\n"
+        "    Then open a fresh terminal and run `phantom version`.\n"
+    )
+
+
 def _download_and_verify(
     url: str, expected_sha: str, *, timeout: float = 60.0,
     progress: Optional[callable] = None,
@@ -213,6 +257,16 @@ def perform_update(
     if cmp >= 0 and not force:
         write("  already up to date.\n")
         return 0
+
+    # Orphan-install check: if pip has no record of phantom-cli, the
+    # zip-extract path can write to the wrong place (or to a place that
+    # PATH ignores). Bail with a concrete pip-reinstall command. This
+    # is the v1.1.32 fix for the issue user @aravi hit going from
+    # v1.1.28 → v1.1.31 — `/update` reported success but the running
+    # `phantom.exe` kept loading the stale package.
+    if not is_pip_managed():
+        write(_orphan_install_hint(manifest.download_url))
+        return 2
 
     target_dir = install_dir or find_install_dir()
     write(f"  install: {target_dir}\n")

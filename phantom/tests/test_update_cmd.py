@@ -163,6 +163,10 @@ def test_perform_update_no_op_when_current_matches(tmp_path: Path):
 
 
 def test_perform_update_downloads_and_extracts_when_newer(tmp_path: Path, monkeypatch):
+    # v1.1.32: orphan-install detection bails before download. The
+    # tests in this file want to exercise the download path, so stub
+    # the check to True (pretend pip-managed).
+    monkeypatch.setattr("phantom.cli.update_cmd.is_pip_managed", lambda: True)
     install = tmp_path / "install"
     install.mkdir()
     zip_bytes = _build_test_zip({
@@ -194,7 +198,8 @@ def test_perform_update_downloads_and_extracts_when_newer(tmp_path: Path, monkey
     assert (install / "phantom" / "_version.py").read_bytes().startswith(b'__version__ = "9.9.9"')
 
 
-def test_perform_update_refuses_sha_mismatch(tmp_path: Path):
+def test_perform_update_refuses_sha_mismatch(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("phantom.cli.update_cmd.is_pip_managed", lambda: True)
     install = tmp_path / "install"
     install.mkdir()
     zip_bytes = _build_test_zip({"phantom/_version.py": b"x"})
@@ -221,7 +226,8 @@ def test_perform_update_refuses_sha_mismatch(tmp_path: Path):
     assert "sha256 mismatch" in "".join(output)
 
 
-def test_perform_update_force_reinstalls_same_version(tmp_path: Path):
+def test_perform_update_force_reinstalls_same_version(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("phantom.cli.update_cmd.is_pip_managed", lambda: True)
     from phantom._version import __version__
     install = tmp_path / "install"
     install.mkdir()

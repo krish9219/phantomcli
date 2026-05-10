@@ -58,6 +58,13 @@ ALLOWED = {
     # surface. Required because PowerShell 5.x doesn't enable
     # ENABLE_VIRTUAL_TERMINAL_PROCESSING by default.
     PHANTOM_DIR / "cli" / "_terminal.py",
+    # update_cmd.py invokes `pip show phantom-cli` to detect orphan
+    # installs (pip metadata missing while phantom is on PATH). All
+    # arguments are hardcoded literals — no user input. Without this
+    # check, the zip-extract update silently writes to the wrong
+    # directory on machines where pip and PATH disagree about which
+    # phantom install is canonical.
+    PHANTOM_DIR / "cli" / "update_cmd.py",
     # ─── v1.0 exemptions ────────────────────────────────────────────
     # Each carries its own justification; the common shape is "shells
     # out to a developer-trusted external tool (git, gh, pytest, sox)

@@ -106,7 +106,12 @@ def _start_server(args: dict[str, Any], *, workdir: str) -> str:
     _os.makedirs(workdir, exist_ok=True)
     log_path = _os.path.join(workdir, ".phantom_server.log")
     try:
-        log = open(log_path, "wb")
+        # buffering=0 → unbuffered. The child gets its own dup'd fd from
+        # Popen, but disabling buffering also avoids "log appears empty
+        # immediately after child crash" on Windows where the FILE_FLAG
+        # caching can hold writes for up to several seconds even after
+        # the writer has exited.
+        log = open(log_path, "wb", buffering=0)
     except OSError as e:
         return json.dumps({"error": f"could not open log file: {e}"})
 
@@ -131,6 +136,15 @@ def _start_server(args: dict[str, Any], *, workdir: str) -> str:
     except OSError as e:
         log.close()
         return json.dumps({"error": f"start_server failed to launch: {e}"})
+
+    # Once Popen has dup'd the fd to the child, we can close our copy in
+    # the parent — the child writes via its own descriptor. Closing here
+    # also forces any lingering parent-side buffer state to release on
+    # Windows so a subsequent read of log_path sees the latest bytes.
+    try:
+        log.close()
+    except OSError:
+        pass
 
     # Brief poll for the port. We don't open the user's port; we just
     # connect-and-close to see if anything is listening.

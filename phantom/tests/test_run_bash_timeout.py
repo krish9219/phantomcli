@@ -92,6 +92,14 @@ def test_run_bash_appends_server_hint_when_command_times_out(tmp_path: Path):
     # that emulates a blocking server.
     script = tmp_path / "fake_server.py"
     script.write_text("import time\ntime.sleep(60)\n")
+    # Docker-sandbox tier needs the workdir + script world-readable: GitHub
+    # CI runners create pytest-of-runner/* with mode 700 by default, which
+    # the docker container's root user can't traverse. Mode 755 + 644 lets
+    # the sandbox container read the script. (Same fix already applied to
+    # the other docker-tier tests in v1.0.2.)
+    import os as _os
+    _os.chmod(tmp_path, 0o755)
+    script.chmod(0o644)
     result = json.loads(_run_bash(
         {"command": f"python {script.name}", "timeout": 2},
         workdir=str(tmp_path),
