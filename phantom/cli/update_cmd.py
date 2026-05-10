@@ -209,9 +209,19 @@ def _extract_to(install_dir: Path, zip_bytes: bytes) -> int:
             zf.extractall(tmp_path)
             count = len(zf.namelist())
 
+        # v1.1.33: tolerate an optional wrapper directory at the root of
+        # the zip. Canonical layout is `phantom/`, `omnicli/`, etc. at
+        # the root, but v1.1.29-v1.1.32 zips were built with a
+        # `phantomcli-source/` wrapper that silently broke `/update` —
+        # files landed at `site-packages/phantomcli-source/phantom/`
+        # instead of `site-packages/phantom/`. Detect a single wrapper
+        # dir whose contents look like the package (contains `phantom/`
+        # or `omnicli/`) and pivot into it.
+        source_root = _detect_source_root(tmp_path)
+
         # Copy each top-level entry over the install dir. We do NOT rmtree
         # the install dir first — user data lives there.
-        for entry in tmp_path.iterdir():
+        for entry in source_root.iterdir():
             dest = install_dir / entry.name
             if entry.is_dir():
                 if dest.exists() and dest.is_dir():
@@ -221,6 +231,38 @@ def _extract_to(install_dir: Path, zip_bytes: bytes) -> int:
             else:
                 shutil.copy2(entry, dest)
     return count
+
+
+def _detect_source_root(tmp_path: Path) -> Path:
+    """Return the directory inside *tmp_path* that contains the actual
+    package files.
+
+    If *tmp_path* has the package layout directly (``phantom/`` or
+    ``omnicli/`` at the top), returns *tmp_path*. If it has exactly one
+    subdirectory whose contents look like the package, returns that
+    subdirectory (the wrapper case). Anything else returns *tmp_path*
+    and lets the merge proceed as-is.
+
+    The package-layout signal is the presence of a ``phantom`` directory
+    OR an ``omnicli`` directory — both ship in every published zip.
+    """
+    children = sorted(tmp_path.iterdir())
+
+    # Directly on the package layout?
+    has_phantom = (tmp_path / "phantom").is_dir()
+    has_omnicli = (tmp_path / "omnicli").is_dir()
+    if has_phantom or has_omnicli:
+        return tmp_path
+
+    # Single wrapper dir? Pivot into it if it contains the package.
+    dirs = [c for c in children if c.is_dir()]
+    if len(dirs) == 1:
+        wrapper = dirs[0]
+        if (wrapper / "phantom").is_dir() or (wrapper / "omnicli").is_dir():
+            return wrapper
+
+    # Fall back to the temp root. Caller will copy whatever's there.
+    return tmp_path
 
 
 def _merge_tree(src: Path, dst: Path) -> None:

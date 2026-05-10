@@ -13,6 +13,56 @@ The major version cadence:
 
 ---
 
+## [1.1.33] — 2026-05-10 — `/update` actually works (zip wrapper-dir fix)
+
+User on v1.1.31 ran `phantom update`, saw "installed 601 files" /
+"updated to v1.1.32" reported successfully, then `phantom chat` still
+showed v1.1.31 in the banner. Across multiple attempts.
+
+Root cause: v1.1.29-v1.1.32 source zips were built with a
+`phantomcli-source/` wrapper directory at the root. The `_extract_to`
+logic copies each top-level entry from the zip onto the install dir,
+so package files landed at `site-packages/phantomcli-source/phantom/`
+instead of `site-packages/phantom/`. The "601 files" really were
+copied — just to a directory Python never imports from. **Every
+`/update` since v1.1.29 has been a silent no-op.**
+
+### Fixed
+
+* **`_detect_source_root` added to `update_cmd.py`** — when a zip has
+  a single top-level wrapper directory whose contents look like the
+  package (contains `phantom/` or `omnicli/`), the extract logic
+  pivots into it. Canonical flat layout still works unchanged.
+* **Server-side zip rebuilt** — `phantomcli-source-v1.1.32.zip` was
+  republished without the wrapper so v1.1.31 users can recover via
+  `phantom update`. Also republishing v1.1.33 with the canonical
+  flat layout.
+
+### Tests
+
+* 9 new in `test_v1_1_33_fixes.py`: `_detect_source_root` cases (root,
+  wrapper, omnicli-only wrapper, unrecognised, empty wrapper),
+  `_extract_to` end-to-end with wrapper layout (the live regression),
+  `_extract_to` with flat layout (no regression), user-data preservation
+  with wrapper pivot, and a structural assertion that the
+  wrapper-pivot logic stays in the source.
+* Suite: 2614 passed, 8 skipped, 0 failed.
+
+### Build process note
+
+Canonical zip-build command — files go directly at the root, no wrapper:
+
+```bash
+cd <source_dir> && zip -rq /tmp/phantomcli-source-vX.Y.Z.zip . -x "*.zip"
+```
+
+The mistake in v1.1.29-v1.1.32 was building from the parent directory
+with `zip ... source_dir/`, which prepends the wrapper. The
+`_detect_source_root` fix means this can't break `/update` again, but
+the canonical build is still flat.
+
+---
+
 ## [1.1.32] — 2026-05-10 — Robustness pass after the v1.1.28→v1.1.31 saga
 
 The v1.1.28→v1.1.31 arc exposed a handful of process and UX gaps that
