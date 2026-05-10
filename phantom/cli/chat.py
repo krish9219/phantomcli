@@ -1836,8 +1836,25 @@ def run_repl(
             # Non-streamed turn (provider didn't support stream, or
             # text-less tool-only round): render the final reply with
             # markdown the same way we did before.
-            write(f"{GREEN}{assistant_label} ›{RESET} ")
-            _render_assistant_reply(reply, write=write)
+            #
+            # v1.1.34: if the model returned a genuinely empty reply
+            # (some free-tier endpoints occasionally do this when
+            # rate-limited or when their tool-call routing gets
+            # confused), surface a concrete next-step instead of
+            # silently writing a blank line. The user transcript on
+            # 2026-05-10 showed `inclusionai/ring-2.6-1t:free` doing
+            # exactly this on simple knowledge questions.
+            stripped = (reply or "").strip()
+            if not stripped:
+                current_model = getattr(session.provider, "_model", "?")
+                write(
+                    f"{DIM}(model {current_model!r} returned an empty "
+                    f"response — try the same prompt again, or switch "
+                    f"with `/model claude-haiku-4-5`){RESET}\n\n"
+                )
+            else:
+                write(f"{GREEN}{assistant_label} ›{RESET} ")
+                _render_assistant_reply(reply, write=write)
         if _looks_garbled(reply):
             current_model = getattr(session.provider, "_model", "")
             write(

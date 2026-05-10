@@ -128,6 +128,14 @@ class PhantomSpinner:
     def stop(self, tokens: int = 0, mark: str = "✓") -> None:
         if not self._enabled:
             return
+        # v1.1.34: idempotent. Streaming kicks the spinner stop on first
+        # chunk via _on_text_chunk; the main run_repl loop also calls
+        # stop() after respond_to() returns. Without this guard, the
+        # second stop's `\r` + spaces + `\r` erase sequence wipes the
+        # streamed reply line because the cursor was sitting at the
+        # start of "ghost › I'm Ghost!" — the user saw blank output.
+        if not self._running:
+            return
         self._running = False
         if tokens > 0:
             self._tokens = tokens

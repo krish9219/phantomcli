@@ -13,6 +13,52 @@ The major version cadence:
 
 ---
 
+## [1.1.34] — 2026-05-10 — Replies were being erased by double spinner stop
+
+User on v1.1.33 saw `✓ done in 3s` and `✓ done in 4s` appear twice
+per turn, with no reply visible between them.
+
+Two distinct bugs combining into "no response":
+
+1. **`PhantomSpinner.stop()` was non-idempotent.** The streaming
+   path stops the spinner on first text chunk (so the cursor advances
+   past the spinner line and `ghost ›` can be printed). The main
+   `run_repl` loop then calls `spinner.stop()` again after
+   `respond_to()` returns. The second stop wrote `\r` + 100 spaces
+   + `\r` to "erase the spinner line" — but the cursor was sitting
+   at the start of the streamed reply line, so it erased the user's
+   reply instead of a stale spinner frame. Hence "blank reply"
+   despite the model returning text.
+
+2. **Empty replies were silently rendered as blank lines.** Some
+   free-tier endpoints (NVIDIA's `inclusionai/ring-2.6-1t:free` was
+   the user's case) occasionally return an empty string on simple
+   knowledge questions when rate-limited. The non-streamed path
+   wrote `Ghost ›` then `_render_assistant_reply("")` which writes
+   one `\n`. From the user's perspective, the agent "finished" but
+   said nothing — and there was no signal to switch model.
+
+### Fixed
+
+* `PhantomSpinner.stop()` now early-returns when `_running` is False.
+  Calling it twice writes the summary once. Stream-then-loop double
+  stop becomes a no-op for the second call. Streamed replies stay
+  on screen.
+* Non-streamed empty-reply path now prints a concrete hint instead
+  of a blank line:
+  `(model 'meta/llama-3.3-70b-instruct' returned an empty response —
+  try the same prompt again, or switch with /model claude-haiku-4-5)`
+
+### Tests
+
+* 6 new in `test_v1_1_34_fixes.py`: stop() idempotency (writes
+  summary once), disabled-spinner stop is safe, stop-without-start
+  safe, restart pattern works, empty-reply hint present in source,
+  `_running` flag stays False after double stop.
+* Suite: 2620 passed, 8 skipped, 0 failed.
+
+---
+
 ## [1.1.33] — 2026-05-10 — `/update` actually works (zip wrapper-dir fix)
 
 User on v1.1.31 ran `phantom update`, saw "installed 601 files" /
