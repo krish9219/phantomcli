@@ -13,6 +13,44 @@ The major version cadence:
 
 ---
 
+## [1.1.31] — 2026-05-10 — The REAL Windows `^[[36m` fix (prompt_toolkit ANSI wrap)
+
+User on PowerShell 5.x reported v1.1.30 still showed literal `^[[36m`
+in the prompt label. Their transcript revealed the actual root cause:
+
+* The boot banner (`● Welcome back, Arvi Sir.`) and tool-call lines
+  rendered colours correctly — proving `enable_ansi()` / SetConsoleMode
+  IS working.
+* But the input prompt label `^[[36mArvi Sir ›^[[0m` showed literal
+  escape codes.
+
+Two distinct rendering pipelines:
+
+* `sys.stdout.write` → Windows console (VT-aware after `enable_ansi()`)
+  → colours render. ✓
+* `prompt_toolkit.PromptSession.prompt(label)` → prompt_toolkit's own
+  renderer, which treats a plain string as **literal text** and
+  ignores embedded ANSI codes regardless of the global console state. ✗
+
+v1.1.29 / v1.1.30 fixed the first pipeline. v1.1.31 fixes the second.
+
+### Fixed
+
+* **`_build_prompt_label()` wraps in `prompt_toolkit.formatted_text.ANSI`**
+  so prompt_toolkit's renderer interprets the embedded `\033[36m` /
+  `\033[0m` codes instead of emitting them as literal text. The
+  fallback path (no prompt_toolkit available) still returns a plain
+  `you > ` string.
+
+### Tests
+
+* 4 new in `test_v1_1_31_fixes.py`: ANSI helper importable, chat
+  module imports it, prompt label is wrapped (regression net), ANSI
+  round-trip preserves escapes.
+* Suite: 2590 passed, 8 skipped, 0 failed.
+
+---
+
 ## [1.1.30] — 2026-05-10 — Windows ANSI ACTUALLY fixed (read-back verification)
 
 v1.1.29 was supposed to fix the literal `^[[36m` Windows rendering bug

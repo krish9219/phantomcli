@@ -1497,6 +1497,7 @@ def run_repl(
         # Fall back to plain sys.stdin.readline on non-TTY.
         try:
             from prompt_toolkit import PromptSession
+            from prompt_toolkit.formatted_text import ANSI
             from prompt_toolkit.history import FileHistory
             from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
             from prompt_toolkit.completion import WordCompleter
@@ -1546,10 +1547,18 @@ def run_repl(
                 # session owns the rendering (avoids the v1.1.24 bug
                 # where multiline-mode repaints clobbered the label
                 # printed before read_line).
+                #
+                # CRITICAL (v1.1.31): prompt_toolkit treats a plain string
+                # passed to .prompt() as LITERAL text — `\033[36m` becomes
+                # `^[[36m` on screen, regardless of whether the host
+                # terminal supports VT (this is the bug v1.1.30 didn't
+                # catch because enable_ansi() succeeded for stdout but
+                # prompt_toolkit has its own rendering pipeline). Wrapping
+                # in ``ANSI`` tells prompt_toolkit to interpret the codes.
                 CYAN = "\033[36m"; RESET = "\033[0m"
                 def _build_prompt_label():
                     try:
-                        return f"\n{CYAN}{user_label} ›{RESET} "
+                        return ANSI(f"\n{CYAN}{user_label} ›{RESET} ")
                     except Exception:
                         return f"\n{user_label} > "
 
